@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ScanFace, CheckCircle2, XCircle, Camera, CameraOff, Sparkles, Clock } from "lucide-react";
 import { Button } from "../components/ui/button";
-import { empleados, obtenerEmpleado } from "../lib/mockData";
+import { empleados, obtenerEmpleado, type Reconocido } from "../lib/mockData";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
 
@@ -15,11 +15,20 @@ interface Marcacion {
   estado: "puntual" | "tardanza";
 }
 
+// Constantes de timing y probabilidades
+const SCAN_INTERVAL_MS = 2200;
+const RECONOCIDO_DURATION_MS = 3500;
+const ERROR_DURATION_MS = 1800;
+const RECONOCIMIENTO_PROB = 0.9;
+const ENTRADA_THRESHOLD_HOURS = 6;
+const TOLERANCIA_PUNTUALIDAD_MINS = 10;
+const MAX_HISTORIAL_SESSION = 10;
+
 export default function Asistencia() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [estado, setEstado] = useState<EstadoCamara>("off");
-  const [reconocido, setReconocido] = useState<{ empleado: typeof empleados[0]; hora: string; tipo: "entrada" | "salida"; estadoMarca: "puntual" | "tardanza" } | null>(null);
+  const [reconocido, setReconocido] = useState<Reconocido | null>(null);
   const [historialSesion, setHistorialSesion] = useState<Marcacion[]>([]);
   const [hayCamara, setHayCamara] = useState(true);
 
@@ -30,49 +39,47 @@ export default function Asistencia() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Bucle de "detección" simulado
-  useEffect(() => {
-    if (estado !== "buscando") return;
-    const t = setTimeout(() => {
-      // Simulación: 90% reconoce, 10% no
-      if (Math.random() < 0.9) {
-        const emp = empleados[Math.floor(Math.random() * empleados.length)];
-        const ahora = new Date();
-        const hora = ahora.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        const horaActualMin = ahora.getHours() * 60 + ahora.getMinutes();
-        const [hE, mE] = emp.horarioEntrada.split(":").map(Number);
-        const tipo: "entrada" | "salida" = horaActualMin < (hE * 60 + 60 * 6) ? "entrada" : "salida";
-        const estadoMarca: "puntual" | "tardanza" = horaActualMin <= hE * 60 + 10 ? "puntual" : "tardanza";
+   // Bucle de "detección" simulado
+   useEffect(() => {
+     if (estado !== "buscando") return;
+     const t = setTimeout(() => {
+       if (Math.random() < RECONOCIMIENTO_PROB) {
+         const emp = empleados[Math.floor(Math.random() * empleados.length)];
+         const ahora = new Date();
+         const hora = ahora.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+         const horaActualMin = ahora.getHours() * 60 + ahora.getMinutes();
+         const [hE, mE] = emp.horarioEntrada.split(":").map(Number);
+         const tipo: "entrada" | "salida" = horaActualMin < (hE * 60 + 60 * ENTRADA_THRESHOLD_HOURS) ? "entrada" : "salida";
+         const estadoMarca: "puntual" | "tardanza" = horaActualMin <= hE * 60 + TOLERANCIA_PUNTUALIDAD_MINS ? "puntual" : "tardanza";
 
-        setReconocido({ empleado: emp, hora, tipo, estadoMarca });
-        setEstado("reconocido");
-        setHistorialSesion(h => [{ empleadoId: emp.id, hora, tipo, estado: estadoMarca }, ...h].slice(0, 10));
-        toast.success(`${emp.nombre}`, { description: `${tipo === "entrada" ? "Entrada" : "Salida"} registrada · ${hora}` });
+         setReconocido({ empleado: emp, hora, tipo, estadoMarca });
+         setEstado("reconocido");
+         setHistorialSesion(h => [{ empleadoId: emp.id, hora, tipo, estado: estadoMarca }, ...h].slice(0, MAX_HISTORIAL_SESSION));
+         toast.success(`${emp.nombre}`, { description: `${tipo === "entrada" ? "Entrada" : "Salida"} registrada · ${hora}` });
 
-        setTimeout(() => {
-          setReconocido(null);
-          setEstado("buscando");
-        }, 3500);
-      } else {
-        setEstado("error");
-        setTimeout(() => setEstado("buscando"), 1800);
-      }
-    }, 2200);
-    return () => clearTimeout(t);
-  }, [estado]);
+         setTimeout(() => {
+           setReconocido(null);
+           setEstado("buscando");
+         }, RECONOCIDO_DURATION_MS);
+       } else {
+         setEstado("error");
+         setTimeout(() => setEstado("buscando"), ERROR_DURATION_MS);
+       }
+     }, SCAN_INTERVAL_MS);
+     return () => clearTimeout(t);
+   }, [estado]);
 
-  const iniciarCamara = async () => {
-    setEstado("iniciando");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setHayCamara(true);
-      setEstado("buscando");
-    } catch {
+   const iniciarCamara = async () => {
+     setEstado("iniciando");
+     try {
+       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
+       streamRef.current = stream;
+       if (videoRef.current) {
+         videoRef.current.srcObject = stream;
+       }
+       setHayCamara(true);
+       setEstado("buscando");
+     } catch {
       setHayCamara(false);
       setEstado("off");
       toast.error("No se pudo acceder a la cámara", { description: "Verifica los permisos del navegador." });

@@ -1,4 +1,4 @@
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 import { Eye, EyeOff, ShieldCheck, ScanFace, Sparkles, Lock, User } from "lucide-react";
 import { useAuth, useRouter } from "../components/App";
 import { toast } from "sonner";
@@ -11,10 +11,11 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  if (isAuthenticated) {
-    navigate("/");
-    return null;
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/");
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();

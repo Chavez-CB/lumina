@@ -4,13 +4,13 @@ import { Search, Download, FileText, Pencil } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { asistencias, obtenerEmpleado, configDescuentos, empleados } from "../lib/mockData";
+import { getAsistencias, obtenerEmpleado, configDescuentos, empleados } from "../lib/mockData";
 import EstadoBadge from "../components/EstadoBadge";
 
 export default function Historial() {
   const [q, setQ] = useState("");
 
-  const ordenadas = [...asistencias].sort((a, b) =>
+  const ordenadas = [...getAsistencias()].sort((a, b) =>
     (b.fecha + (b.entrada ?? "")).localeCompare(a.fecha + (a.entrada ?? ""))
   );
 

@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import type { Route } from "../lib/routes";
 import { Toaster } from "./ui/sonner";
@@ -21,8 +20,8 @@ interface AuthCtx {
   logout: () => void;
 }
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
-const ADMIN_USER = "admin";
-const ADMIN_PASS = "admin123";
+const ADMIN_USER = import.meta.env.PUBLIC_LUMINA_ADMIN_USER || "admin";
+const ADMIN_PASS = import.meta.env.PUBLIC_LUMINA_ADMIN_PASS || "admin123";
 const STORAGE_KEY = "lumina_auth";
 
 function AuthProvider({ children }: { children: ReactNode }) {
@@ -31,7 +30,13 @@ function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { try { setUser(JSON.parse(raw)); } catch {} }
+    if (raw) { 
+      try { 
+        setUser(JSON.parse(raw)); 
+      } catch (e) { 
+        console.error("Error parsing stored auth:", e); 
+      } 
+    }
     setHydrated(true);
   }, []);
 
@@ -131,8 +136,6 @@ function RouterProvider({ children }: { children: ReactNode }) {
 }
 
 // ─── Page Renderer ────────────────────────────────────────────────────────────
-const queryClient = new QueryClient();
-
 function AppInner() {
   const { route, navigate } = useRouter();
   const { isAuthenticated } = useAuth();
@@ -163,15 +166,13 @@ function AppInner() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <AuthProvider>
-          <RouterProvider>
-            <Toaster position="top-right" richColors />
-            <AppInner />
-          </RouterProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <RouterProvider>
+          <Toaster position="top-right" richColors />
+          <AppInner />
+        </RouterProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

@@ -5,7 +5,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis, Legend,
 } from "recharts";
-import { empleados, asistencias, areas, configDescuentos, fechaOffset } from "../lib/mockData";
+import { empleados, getAsistencias, areas, configDescuentos, fechaOffset } from "../lib/mockData";
 import KpiCard from "../components/KpiCard";
 
 const C = { primary: "hsl(162 65% 42%)", accent: "hsl(345 65% 42%)", warning: "hsl(38 92% 50%)", muted: "hsl(215 14% 65%)" };
@@ -15,7 +15,7 @@ export default function Estadisticas() {
     // Asistencia diaria 30 días
     const diaria = Array.from({ length: 30 }).map((_, i) => {
       const f = fechaOffset(29 - i);
-      const d = asistencias.filter(a => a.fecha === f);
+      const d = getAsistencias().filter(a => a.fecha === f);
       return {
         d: new Date(f).getDate().toString(),
         Asistencias: d.filter(a => a.estado !== "ausente").length,
@@ -24,12 +24,12 @@ export default function Estadisticas() {
     });
 
     // Dona puntualidad mes
-    const totalMes = asistencias.length || 1;
+    const totalMes = getAsistencias().length || 1;
     const dona = [
-      { name: "Puntual", value: asistencias.filter(a => a.estado === "puntual").length, color: C.primary },
-      { name: "Tardanza", value: asistencias.filter(a => a.estado === "tardanza").length, color: C.warning },
-      { name: "Ausente", value: asistencias.filter(a => a.estado === "ausente").length, color: C.accent },
-      { name: "Justificado", value: asistencias.filter(a => a.estado === "justificado").length, color: C.muted },
+      { name: "Puntual", value: getAsistencias().filter(a => a.estado === "puntual").length, color: C.primary },
+      { name: "Tardanza", value: getAsistencias().filter(a => a.estado === "tardanza").length, color: C.warning },
+      { name: "Ausente", value: getAsistencias().filter(a => a.estado === "ausente").length, color: C.accent },
+      { name: "Justificado", value: getAsistencias().filter(a => a.estado === "justificado").length, color: C.muted },
     ];
     const pctAsist = ((dona[0].value + dona[1].value) / totalMes * 100).toFixed(1);
 
@@ -41,7 +41,7 @@ export default function Estadisticas() {
 
     // Ranking puntuales
     const ranking = empleados.map(e => {
-      const a = asistencias.filter(x => x.empleadoId === e.id);
+      const a = getAsistencias().filter(x => x.empleadoId === e.id);
       const p = a.filter(x => x.estado === "puntual").length;
       return { nombre: e.nombre.split(" ")[0] + " " + (e.nombre.split(" ")[1] ?? ""), puntuales: p };
     }).sort((a, b) => b.puntuales - a.puntuales).slice(0, 7);
@@ -49,7 +49,7 @@ export default function Estadisticas() {
     // Tardanzas por área
     const porArea = areas.map(ar => {
       const empAr = empleados.filter(e => e.area === ar).map(e => e.id);
-      const aAr = asistencias.filter(a => empAr.includes(a.empleadoId));
+      const aAr = getAsistencias().filter(a => empAr.includes(a.empleadoId));
       return {
         area: ar.length > 12 ? ar.slice(0, 11) + "…" : ar,
         Tardanzas: aAr.filter(a => a.estado === "tardanza").length,
@@ -69,8 +69,8 @@ export default function Estadisticas() {
     const areaTopTard = [...porArea].sort((a, b) => b.Tardanzas - a.Tardanzas)[0];
 
     // Total descuentos mes
-    const tardanzas = asistencias.filter(a => a.estado === "tardanza").length;
-    const faltas = asistencias.filter(a => a.estado === "ausente").length;
+    const tardanzas = getAsistencias().filter(a => a.estado === "tardanza").length;
+    const faltas = getAsistencias().filter(a => a.estado === "ausente").length;
     const sueldoMedio = empleados.reduce((s, e) => s + e.sueldoBase, 0) / empleados.length;
     const totalDesc = tardanzas * configDescuentos.montoTardanza + faltas * (sueldoMedio / 30);
 

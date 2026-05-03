@@ -34,6 +34,13 @@ export interface Impuesto {
   activo: boolean;
 }
 
+export interface Reconocido {
+  empleado: Empleado;
+  hora: string;
+  tipo: "entrada" | "salida";
+  estadoMarca: "puntual" | "tardanza";
+}
+
 const avatar = (seed: string) => `https://i.pravatar.cc/150?u=${seed}`;
 
 export const empleados: Empleado[] = [
@@ -70,24 +77,32 @@ function sumarMinutos(hora: string, mins: number): string {
 }
 export { sumarMinutos };
 
-function generarAsistencias(): Asistencia[] {
+function seededRandom(seed: number) {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+function generarAsistencias(random: () => number = Math.random): Asistencia[] {
   const lista: Asistencia[] = [];
   empleados.forEach(emp => {
     for (let d = 0; d < 30; d++) {
       const fecha = fechaOffset(d);
       const dia = new Date(fecha).getDay();
       if (dia === 0 || dia === 6) continue;
-      const r = Math.random();
+      const r = random();
       let estado: EstadoAsistencia = "puntual";
       let entrada: string | null = emp.horarioEntrada;
       let salida: string | null = emp.horarioSalida;
       let horas = 9;
       if (r < 0.75) {
         estado = "puntual";
-        entrada = sumarMinutos(emp.horarioEntrada, -Math.floor(Math.random() * 5));
+        entrada = sumarMinutos(emp.horarioEntrada, -Math.floor(random() * 5));
       } else if (r < 0.90) {
         estado = "tardanza";
-        const tarde = 11 + Math.floor(Math.random() * 25);
+        const tarde = 11 + Math.floor(random() * 25);
         entrada = sumarMinutos(emp.horarioEntrada, tarde);
         horas = 9 - tarde / 60;
       } else if (r < 0.97) {
@@ -101,7 +116,15 @@ function generarAsistencias(): Asistencia[] {
   return lista;
 }
 
-export const asistencias: Asistencia[] = generarAsistencias();
+let _asistencias: Asistencia[] | null = null;
+
+export function getAsistencias(): Asistencia[] {
+  if (!_asistencias) {
+    const random = seededRandom(12345);
+    _asistencias = generarAsistencias(random);
+  }
+  return _asistencias;
+}
 
 export const impuestos: Impuesto[] = [
   { id: "t1", nombre: "AFP", porcentaje: 13, aplicaTodos: true, tipo: "deduccion", activo: true },
@@ -124,4 +147,4 @@ export const empresa = {
 };
 
 export const obtenerEmpleado = (id: string) => empleados.find(e => e.id === id);
-export const asistenciasDelDia = (fecha: string) => asistencias.filter(a => a.fecha === fecha);
+export const asistenciasDelDia = (fecha: string) => getAsistencias().filter(a => a.fecha === fecha);
