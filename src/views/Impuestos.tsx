@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Plus, Receipt, ToggleLeft, ToggleRight, Pencil } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Switch } from "../components/ui/switch";
-import { empleados, asistencias, configDescuentos, impuestos as mockImp } from "../lib/mockData";
+import { empleados, getAsistencias, configDescuentos, impuestos as mockImp } from "../lib/mockData";
 import type { Impuesto } from "../lib/mockData";
 
 export default function Impuestos() {
@@ -13,7 +13,7 @@ export default function Impuestos() {
   const empleado = empleados.find(e => e.id === empleadoId)!;
 
   const calculo = useMemo(() => {
-    const asist = asistencias.filter(a => a.empleadoId === empleadoId);
+    const asist = getAsistencias().filter(a => a.empleadoId === empleadoId);
     const tardanzas = asist.filter(a => a.estado === "tardanza").length;
     const faltas = asist.filter(a => a.estado === "ausente").length;
     const sueldoDiario = empleado.sueldoBase / 30;

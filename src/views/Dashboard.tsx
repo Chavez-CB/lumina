@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import KpiCard from "../components/KpiCard";
 import { Input } from "../components/ui/input";
-import { empleados, asistencias, asistenciasDelDia, fechaHoy, fechaOffset, obtenerEmpleado } from "../lib/mockData";
+import { empleados, asistenciasDelDia, fechaHoy, fechaOffset, obtenerEmpleado } from "../lib/mockData";
 
 const COLORES = {
   primary: "hsl(162 65% 42%)",

@@ -1,13 +1,13 @@
 // Módulo de Descuentos — cálculo automático por tardanzas y faltas
 import { useMemo } from "react";
 import { TrendingDown, Clock, UserX, Wallet } from "lucide-react";
-import { empleados, asistencias, configDescuentos } from "../lib/mockData";
+import { empleados, getAsistencias, configDescuentos } from "../lib/mockData";
 import KpiCard from "../components/KpiCard";
 
 export default function Descuentos() {
   const data = useMemo(() => {
     return empleados.map(e => {
-      const asist = asistencias.filter(a => a.empleadoId === e.id);
+      const asist = getAsistencias().filter(a => a.empleadoId === e.id);
       const tardanzas = asist.filter(a => a.estado === "tardanza").length;
       const faltas = asist.filter(a => a.estado === "ausente").length;
       const sueldoDiario = e.sueldoBase / 30;

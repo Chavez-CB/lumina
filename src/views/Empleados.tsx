@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { empleados, areas, asistencias } from "../lib/mockData";
+import { empleados, areas, getAsistencias } from "../lib/mockData";
 import type { Empleado } from "../lib/mockData";
 import EstadoBadge from "../components/EstadoBadge";
 
@@ -93,7 +93,7 @@ export default function Empleados() {
 }
 
 function FichaEmpleado({ emp }: { emp: Empleado }) {
-  const empAsist = asistencias.filter(a => a.empleadoId === emp.id);
+  const empAsist = getAsistencias().filter(a => a.empleadoId === emp.id);
   const puntuales = empAsist.filter(a => a.estado === "puntual").length;
   const tardanzas = empAsist.filter(a => a.estado === "tardanza").length;
   const ausentes = empAsist.filter(a => a.estado === "ausente").length;
