@@ -1,35 +1,60 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
-  LayoutDashboard, ScanFace, Users, BadgePercent, Receipt,
+  LayoutDashboard, Users, BadgePercent, Receipt,
   BarChart3, History, Settings, LogOut, Menu, X, Moon, Sun, Bell, ShieldCheck,
+  Clock, UserX, AlertCircle,
 } from "lucide-react";
 import type { Route } from "../../lib/routes";
 import { useAuth, useTheme, useRouter } from "../App";
 import { cn } from "../../lib/utils";
+import { notificacionService } from "../../services/notificacionService";
+import type { Notificacion } from "../../services/notificacionService";
 
 const nav: { to: Route; label: string; icon: React.ElementType }[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/asistencia", label: "Asistencia Facial", icon: ScanFace },
-  { to: "/empleados", label: "Empleados", icon: Users },
-  { to: "/descuentos", label: "Descuentos", icon: BadgePercent },
-  { to: "/impuestos", label: "Impuestos", icon: Receipt },
-  { to: "/estadisticas", label: "Estadísticas", icon: BarChart3 },
-  { to: "/historial", label: "Historial", icon: History },
-  { to: "/configuracion", label: "Configuración", icon: Settings },
+  { to: "/",            label: "Dashboard",    icon: LayoutDashboard },
+  { to: "/empleados",   label: "Empleados",    icon: Users           },
+  { to: "/descuentos",  label: "Descuentos",   icon: BadgePercent    },
+  { to: "/impuestos",   label: "Impuestos",    icon: Receipt         },
+  { to: "/estadisticas",label: "Estadisticas", icon: BarChart3       },
+  { to: "/historial",   label: "Historial",    icon: History         },
+  { to: "/configuracion",label: "Configuracion",icon: Settings       },
 ];
+
+const TIPO_META: Record<Notificacion["tipo"], { label: string; color: string; icon: typeof Clock }> = {
+  tardanza:   { label: "Tardanza registrada", color: "text-warning",  icon: Clock       },
+  ausencia:   { label: "Ausencia registrada", color: "text-accent",   icon: UserX       },
+  sin_marcar: { label: "Sin marcar entrada",  color: "text-warning",  icon: AlertCircle },
+};
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { logout, user } = useAuth();
   const { theme, toggle } = useTheme();
   const { route, navigate } = useRouter();
   const [open, setOpen] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
+  const [notifs, setNotifs] = useState<Notificacion[]>(() => notificacionService.getNotificaciones());
+  const notifRef = useRef<HTMLDivElement>(null);
 
   const titulo = nav.find(n => n.to === route)?.label ?? "Sistema";
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
+  // Cerrar panel al hacer click fuera
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotif(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handleLogout = () => { logout(); navigate("/login"); };
+
+  const marcarLeidas = () => {
+    notificacionService.marcarTodasLeidas();
+    setNotifs([]);
+    setShowNotif(false);
   };
 
   function SidebarContent({ onNavigate }: { onNavigate: () => void }) {
@@ -74,8 +99,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         <div className="p-4 border-t border-sidebar-border">
           <div className="rounded-xl bg-gradient-primary p-4 text-primary-foreground shadow-glow">
-            <p className="text-xs font-semibold uppercase tracking-wider opacity-90">Versión Demo</p>
-            <p className="text-sm mt-1">Datos simulados para demostración del sistema.</p>
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-90">Version Demo</p>
+            <p className="text-sm mt-1">Datos simulados para demostracion del sistema.</p>
           </div>
         </div>
       </>
@@ -89,7 +114,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <SidebarContent onNavigate={() => setOpen(false)} />
       </aside>
 
-      {/* Sidebar móvil */}
+      {/* Sidebar movil */}
       <div className={cn(
         "lg:hidden fixed inset-0 z-40 transition-opacity",
         open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
@@ -120,10 +145,70 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2">
-              <button className="relative p-2 rounded-md hover:bg-muted/40" aria-label="Notificaciones">
-                <Bell className="h-5 w-5" />
-                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-accent" />
-              </button>
+              {/* Notificaciones */}
+              <div className="relative" ref={notifRef}>
+                <button
+                  onClick={() => setShowNotif(s => !s)}
+                  className="relative p-2 rounded-md hover:bg-muted/40 transition-base"
+                  aria-label="Notificaciones"
+                >
+                  <Bell className="h-5 w-5" />
+                  {notifs.length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-accent text-accent-foreground text-[10px] font-bold flex items-center justify-center leading-none">
+                      {notifs.length > 9 ? "9+" : notifs.length}
+                    </span>
+                  )}
+                </button>
+
+                {showNotif && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-2xl shadow-elevated z-50 overflow-hidden animate-scale-in">
+                    <div className="p-4 border-b border-border flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-sm">Notificaciones</p>
+                        <p className="text-xs text-muted-foreground">
+                          {notifs.length > 0 ? `${notifs.length} alertas hoy` : "Sin alertas hoy"}
+                        </p>
+                      </div>
+                      {notifs.length > 0 && (
+                        <button
+                          onClick={marcarLeidas}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          Marcar leidas
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto scrollbar-thin">
+                      {notifs.length === 0 ? (
+                        <div className="py-8 text-center text-sm text-muted-foreground">
+                          <Bell className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                          Sin alertas por ahora.
+                        </div>
+                      ) : (
+                        notifs.map(n => {
+                          const meta = TIPO_META[n.tipo];
+                          const Icon = meta.icon;
+                          return (
+                            <div key={n.id} className="flex items-start gap-3 p-3 hover:bg-muted/40 transition-base border-b border-border/50 last:border-0">
+                              <div className={`mt-0.5 h-7 w-7 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 ${meta.color}`}>
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{n.nombre}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {meta.label}{n.hora ? ` · ${n.hora}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button className="p-2 rounded-md hover:bg-muted/40" onClick={toggle} aria-label="Cambiar tema">
                 {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
               </button>
@@ -136,7 +221,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   {(user?.username ?? "A")[0].toUpperCase()}
                 </div>
               </div>
-              <button className="p-2 rounded-md hover:bg-muted/40" onClick={handleLogout} aria-label="Cerrar sesión">
+              <button className="p-2 rounded-md hover:bg-muted/40" onClick={handleLogout} aria-label="Cerrar sesion">
                 <LogOut className="h-5 w-5" />
               </button>
             </div>

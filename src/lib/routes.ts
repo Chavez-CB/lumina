@@ -1,7 +1,6 @@
 // Tipos de rutas compartidos para toda la aplicación
 export type Route =
   | "/"
-  | "/asistencia"
   | "/empleados"
   | "/descuentos"
   | "/impuestos"
@@ -13,7 +12,6 @@ export type Route =
 // Lista de rutas protegidas (requieren autenticación)
 export const protectedRoutes: Route[] = [
   "/",
-  "/asistencia",
   "/empleados",
   "/descuentos",
   "/impuestos",

@@ -6,7 +6,6 @@ import type { Route } from "../lib/routes";
 import { Toaster } from "./ui/sonner";
 import AppLayout from "./layout/AppLayout";
 import Dashboard from "../views/Dashboard";
-import Asistencia from "../views/Asistencia";
 import Empleados from "../views/Empleados";
 import Descuentos from "../views/Descuentos";
 import Impuestos from "../views/Impuestos";
@@ -155,7 +154,6 @@ function AppInner() {
 
   const pages: Record<string, ReactNode> = {
     "/": <Dashboard />,
-    "/asistencia": <Asistencia />,
     "/empleados": <Empleados />,
     "/descuentos": <Descuentos />,
     "/impuestos": <Impuestos />,
