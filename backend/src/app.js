@@ -5,6 +5,11 @@ import morgan   from 'morgan';
 
 import empleadoRoutes         from './routes/empleado.routes.js';
 import { errorHandler, notFound } from './middlewares/errorHandler.js';
+import justificacionRoutes from './routes/justificacion.routes.js';
+import asistenciaRoutes from './routes/asistencia.routes.js';
+import horarioRoutes from './routes/horario.routes.js';
+import areaRoutes from './routes/area.routes.js';
+import asignacionRoutes from './routes/asignacion.routes.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -19,6 +24,12 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/', (_, res) => res.json({ ok: true, mensaje: 'Lumina API funcionando 🌟' }));
 
 app.use('/api/empleados', empleadoRoutes);
+app.use('/api/justificaciones', justificacionRoutes);
+app.use('/api/asistencias', asistenciaRoutes);
+app.use('/api/horarios', horarioRoutes);
+app.use('/api/areas', areaRoutes);
+app.use('/api/asignaciones', asignacionRoutes);
+
 
 // ── Manejo de errores ─────────────────────────────────────────────────────
 app.use(notFound);
@@ -28,3 +39,5 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
+
+
