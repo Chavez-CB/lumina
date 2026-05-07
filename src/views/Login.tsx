@@ -2,39 +2,22 @@ import { useState, useEffect } from "react";
 import { ShieldCheck, ScanFace, Sparkles, KeyRound } from "lucide-react";
 import { useAuth, useRouter } from "../components/App";
 import { toast } from "sonner";
-import { cn } from "../lib/utils";
 import CredentialAuth from "../components/CredentialAuth";
-import FacialAuth from "../components/FacialAuth";
+import FacialAttendance from "../components/FacialAttendance";
 import type { LoginResponse } from "../types/auth";
-import type { FacialAuthResponse } from "../types/facial";
-
-type AuthMethod = "credentials" | "facial";
 
 export default function Login() {
-  const { loginWithFacial, loginWithCredentials, isAuthenticated } = useAuth();
+  const { loginWithCredentials, isAuthenticated } = useAuth();
   const { navigate } = useRouter();
-  const [method, setMethod] = useState<AuthMethod>("credentials");
+  const [showAttendance, setShowAttendance] = useState(false);
 
-  // Redirigir si ya autenticado
   useEffect(() => {
     if (isAuthenticated) navigate("/");
   }, [isAuthenticated, navigate]);
 
-  // Callback para login por credenciales (authService ya persistió en contexto)
   const handleCredentialSuccess = (_response: LoginResponse) => {
     toast.success("Bienvenido al sistema", { description: "Sesión iniciada correctamente." });
     navigate("/");
-  };
-
-  // Callback para login por facial
-  const handleFacialSuccess = async (response: FacialAuthResponse) => {
-    const ok = await loginWithFacial(response);
-    if (ok) {
-      toast.success("Rostro reconocido", { description: `Bienvenido, ${response.user?.nombre ?? response.user?.username}.` });
-      navigate("/");
-    } else {
-      toast.error("Error al iniciar sesión facial", { description: "Intenta de nuevo." });
-    }
   };
 
   const handleError = (error: string) => {
@@ -44,7 +27,7 @@ export default function Login() {
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background">
 
-      {/* ── Panel izquierdo — branding (sin cambios) ── */}
+      {/* ── Panel izquierdo — branding ── */}
       <div className="relative hidden lg:flex flex-col justify-between p-12 bg-gradient-hero text-primary-foreground overflow-hidden">
         <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
         <div className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-accent/30 blur-3xl" />
@@ -91,7 +74,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* ── Panel derecho — two-option auth ── */}
+      {/* ── Panel derecho ── */}
       <div className="flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-md space-y-7 animate-fade-in-up">
 
@@ -105,65 +88,54 @@ export default function Login() {
 
           {/* Encabezado */}
           <div className="space-y-1">
-            <h1 className="text-3xl font-bold tracking-tight">Inicia sesión</h1>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted border border-border text-xs font-medium text-muted-foreground mb-3">
+              <KeyRound className="h-3 w-3" /> Solo administradores
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight">Acceso al panel</h1>
             <p className="text-muted-foreground text-sm">
-              Elige cómo acceder al panel de administración.
+              Ingresa tus credenciales para acceder al sistema de administración.
             </p>
           </div>
 
-          {/* ── Selector de método ── */}
-          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-muted/60 border border-border">
-            <button
-              onClick={() => setMethod("credentials")}
-              className={cn(
-                "flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-base",
-                method === "credentials"
-                  ? "bg-background shadow-sm text-foreground border border-border"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <KeyRound className="h-4 w-4" />
-              Credenciales
-            </button>
-            <button
-              onClick={() => setMethod("facial")}
-              className={cn(
-                "flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-base",
-                method === "facial"
-                  ? "bg-background shadow-sm text-foreground border border-border"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <ScanFace className="h-4 w-4" />
-              Reconocimiento facial
-            </button>
+          {/* Formulario credenciales */}
+          <CredentialAuth
+            onSuccess={handleCredentialSuccess}
+            onError={handleError}
+            loginFn={loginWithCredentials}
+          />
+
+          {/* Separador */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-background px-3 text-muted-foreground">¿Eres empleado?</span>
+            </div>
           </div>
 
-          {/* ── Contenido condicional ── */}
-          <div className="animate-fade-in-up" key={method}>
-            {method === "credentials" ? (
-              <CredentialAuth
-                onSuccess={handleCredentialSuccess}
-                onError={handleError}
-                loginFn={loginWithCredentials}
-              />
-            ) : (
-              <div className="space-y-4">
-                <FacialAuth
-                  onSuccess={handleFacialSuccess}
-                  onError={handleError}
-                  autoStart
-                />
-                <p className="text-center text-xs text-muted-foreground">
-                  Posiciónate frente a la cámara y presiona{" "}
-                  <span className="font-semibold text-foreground">Capturar y autenticar</span>.
-                </p>
-              </div>
-            )}
-          </div>
+          {/* Botón asistencia facial */}
+          <button
+            id="btn-asistencia-facial"
+            onClick={() => setShowAttendance(true)}
+            className="w-full h-14 rounded-xl border-2 border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-base flex items-center justify-center gap-3 group"
+          >
+            <div className="h-9 w-9 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow group-hover:scale-105 transition-transform">
+              <ScanFace className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-sm text-foreground">Registrar Asistencia Facial</p>
+              <p className="text-xs text-muted-foreground">Marca tu entrada o salida</p>
+            </div>
+          </button>
 
         </div>
       </div>
+
+      {/* ── Modal asistencia ── */}
+      {showAttendance && (
+        <FacialAttendance onClose={() => setShowAttendance(false)} />
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import type { AuthUser } from "../types/auth";
-import type { FacialAuthResponse } from "../types/facial";
 import { authService } from "../services/authService";
 import type { Route } from "../lib/routes";
 import { Toaster } from "./ui/sonner";
@@ -20,10 +19,7 @@ import Login from "../views/Login";
 interface AuthCtx {
   isAuthenticated: boolean;
   user: AuthUser | null;
-  // Método credenciales: retorna true si éxito
   loginWithCredentials: (username: string, password: string) => Promise<boolean>;
-  // Método facial: recibe respuesta ya procesada de facialService
-  loginWithFacial: (facialResponse: FacialAuthResponse) => Promise<boolean>;
   logout: () => void;
 }
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
@@ -61,16 +57,6 @@ function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
-  // Login por facial (recibe FacialAuthResponse ya validada)
-  const loginWithFacial = async (facialResponse: FacialAuthResponse): Promise<boolean> => {
-    const response = await authService.loginWithFacial(facialResponse);
-    if (response.success && response.user) {
-      persistUser(response.user);
-      return true;
-    }
-    return false;
-  };
-
   const logout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
@@ -79,7 +65,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
   if (!hydrated) return null;
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated: !!user, user, loginWithCredentials, loginWithFacial, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated: !!user, user, loginWithCredentials, logout }}>
       {children}
     </AuthContext.Provider>
   );

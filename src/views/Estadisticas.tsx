@@ -1,20 +1,23 @@
-// Módulo de Estadísticas — análisis visual completo
-import { useMemo } from "react";
-import { Award, TrendingDown, AlertTriangle, Activity } from "lucide-react";
+// Modulo de Estadisticas — analisis visual completo
+import { useMemo, useState } from "react";
+import { Award, TrendingDown, AlertTriangle, Activity, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis, Legend,
 } from "recharts";
-import { empleados, getAsistencias, areas, configDescuentos, fechaOffset } from "../lib/mockData";
+import { empleados, getAsistencias, areas, configDescuentos } from "../lib/mockData";
+import { estadisticaService } from "../services/estadisticaService";
 import KpiCard from "../components/KpiCard";
 
 const C = { primary: "hsl(162 65% 42%)", accent: "hsl(345 65% 42%)", warning: "hsl(38 92% 50%)", muted: "hsl(215 14% 65%)" };
 
 export default function Estadisticas() {
+  const [year, setYear] = useState(new Date().getFullYear());
+
   const data = useMemo(() => {
-    // Asistencia diaria 30 días
+    // Asistencia diaria 30 dias
     const diaria = Array.from({ length: 30 }).map((_, i) => {
-      const f = fechaOffset(29 - i);
+      const f = (() => { const d = new Date(); d.setDate(d.getDate() - (29 - i)); return d.toISOString().slice(0, 10); })();
       const d = getAsistencias().filter(a => a.fecha === f);
       return {
         d: new Date(f).getDate().toString(),
@@ -26,18 +29,15 @@ export default function Estadisticas() {
     // Dona puntualidad mes
     const totalMes = getAsistencias().length || 1;
     const dona = [
-      { name: "Puntual", value: getAsistencias().filter(a => a.estado === "puntual").length, color: C.primary },
-      { name: "Tardanza", value: getAsistencias().filter(a => a.estado === "tardanza").length, color: C.warning },
-      { name: "Ausente", value: getAsistencias().filter(a => a.estado === "ausente").length, color: C.accent },
-      { name: "Justificado", value: getAsistencias().filter(a => a.estado === "justificado").length, color: C.muted },
+      { name: "Puntual",     value: getAsistencias().filter(a => a.estado === "puntual").length,     color: C.primary  },
+      { name: "Tardanza",    value: getAsistencias().filter(a => a.estado === "tardanza").length,    color: C.warning  },
+      { name: "Ausente",     value: getAsistencias().filter(a => a.estado === "ausente").length,     color: C.accent   },
+      { name: "Justificado", value: getAsistencias().filter(a => a.estado === "justificado").length, color: C.muted    },
     ];
     const pctAsist = ((dona[0].value + dona[1].value) / totalMes * 100).toFixed(1);
 
-    // Evolución mensual (12 meses simulada)
-    const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
-    const evolucion = meses.map((m, i) => ({
-      mes: m, asistencia: 80 + Math.round(Math.sin(i / 1.5) * 8 + Math.random() * 5),
-    }));
+    // Evolucion anual — datos reales del mes actual, seeded para historicos
+    const evolucion = estadisticaService.getEvolucionAnual(year);
 
     // Ranking puntuales
     const ranking = empleados.map(e => {
@@ -46,42 +46,47 @@ export default function Estadisticas() {
       return { nombre: e.nombre.split(" ")[0] + " " + (e.nombre.split(" ")[1] ?? ""), puntuales: p };
     }).sort((a, b) => b.puntuales - a.puntuales).slice(0, 7);
 
-    // Tardanzas por área
+    // Tardanzas por area
     const porArea = areas.map(ar => {
       const empAr = empleados.filter(e => e.area === ar).map(e => e.id);
       const aAr = getAsistencias().filter(a => empAr.includes(a.empleadoId));
       return {
-        area: ar.length > 12 ? ar.slice(0, 11) + "…" : ar,
+        area: ar.length > 12 ? ar.slice(0, 11) + "..." : ar,
         Tardanzas: aAr.filter(a => a.estado === "tardanza").length,
         Faltas: aAr.filter(a => a.estado === "ausente").length,
       };
     });
 
-    // Descuentos por mes (simulado)
-    const descMes = meses.map((m, i) => ({
-      mes: m, Descuentos: 800 + Math.round(Math.cos(i / 1.7) * 300 + Math.random() * 250),
-    }));
+    // Descuentos por mes — datos reales del mes actual, seeded para historicos
+    const descMes = estadisticaService.getDescuentosPorMes(year);
 
-    // Más puntual
     const masPuntual = ranking[0];
-
-    // Área con más tardanzas
     const areaTopTard = [...porArea].sort((a, b) => b.Tardanzas - a.Tardanzas)[0];
-
-    // Total descuentos mes
     const tardanzas = getAsistencias().filter(a => a.estado === "tardanza").length;
-    const faltas = getAsistencias().filter(a => a.estado === "ausente").length;
+    const faltas    = getAsistencias().filter(a => a.estado === "ausente").length;
     const sueldoMedio = empleados.reduce((s, e) => s + e.sueldoBase, 0) / empleados.length;
     const totalDesc = tardanzas * configDescuentos.montoTardanza + faltas * (sueldoMedio / 30);
 
     return { diaria, dona, pctAsist, evolucion, ranking, porArea, descMes, masPuntual, areaTopTard, totalDesc };
-  }, []);
+  }, [year]);
 
   return (
     <div className="space-y-6 animate-fade-in-up">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Análisis estadístico</h2>
-        <p className="text-sm text-muted-foreground">Visualiza el comportamiento del personal con detalle.</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Analisis estadistico</h2>
+          <p className="text-sm text-muted-foreground">Visualiza el comportamiento del personal con detalle.</p>
+        </div>
+        {/* Selector de año */}
+        <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-1.5 shadow-soft">
+          <button onClick={() => setYear(y => y - 1)} className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted transition-base">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-sm font-semibold w-12 text-center">{year}</span>
+          <button onClick={() => setYear(y => y + 1)} disabled={year >= new Date().getFullYear()} className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted transition-base disabled:opacity-40">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

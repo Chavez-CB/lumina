@@ -1,12 +1,14 @@
-// Módulo de Empleados — listado, filtros, ficha
+// Modulo de Empleados — listado, filtros, ficha
 import { useState } from "react";
-import { Search, UserPlus, Mail, Briefcase, Building2, Calendar, Camera, X } from "lucide-react";
+import { Search, UserPlus, Mail, Briefcase, Building2, Calendar, Camera, X, Clock } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { empleados, areas, getAsistencias } from "../lib/mockData";
+import { empleados, areas, getAsistencias, getHorario } from "../lib/mockData";
 import type { Empleado } from "../lib/mockData";
+import { horarioService } from "../services/horarioService";
+import { empleadoService } from "../services/empleadoService";
 import EstadoBadge from "../components/EstadoBadge";
 
 export default function Empleados() {
@@ -112,10 +114,11 @@ function FichaEmpleado({ emp }: { emp: Empleado }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 text-sm">
-        <Info icon={Mail} label="DNI" value={emp.dni} />
+        <Info icon={Mail}     label="DNI"         value={emp.dni} />
         <Info icon={Briefcase} label="Sueldo base" value={`S/ ${emp.sueldoBase.toLocaleString()}`} />
-        <Info icon={Building2} label="Horario" value={`${emp.horarioEntrada} - ${emp.horarioSalida}`} />
-        <Info icon={Calendar} label="Ingreso" value={new Date(emp.fechaIngreso).toLocaleDateString("es-PE")} />
+        <Info icon={Clock}    label="Horario"      value={getHorario(emp.horarioId)?.nombre ?? `${emp.horarioEntrada} - ${emp.horarioSalida}`} />
+        <Info icon={Building2} label="Turno"       value={`${emp.horarioEntrada} - ${emp.horarioSalida}`} />
+        <Info icon={Calendar} label="Ingreso"      value={new Date(emp.fechaIngreso).toLocaleDateString("es-PE")} className="col-span-2" />
       </div>
 
       <div className="rounded-xl bg-muted/40 p-4">
@@ -157,8 +160,29 @@ function Stat({ valor, label, color }: { valor: number; label: string; color: st
 }
 
 function FormularioNuevo({ onClose }: { onClose: () => void }) {
+  const horarios = horarioService.getAll();
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await empleadoService.create({
+      nombre:         fd.get("nombre") as string,
+      dni:            fd.get("dni") as string,
+      cargo:          fd.get("cargo") as string,
+      area:           fd.get("area") as string,
+      sueldoBase:     parseFloat(fd.get("sueldo") as string) || 0,
+      fechaIngreso:   fd.get("ingreso") as string,
+      horarioId:      fd.get("horario") as string,
+      horarioEntrada: horarios.find(h => h.id === fd.get("horario"))?.entrada ?? "08:00",
+      horarioSalida:  horarios.find(h => h.id === fd.get("horario"))?.salida  ?? "17:00",
+      foto:           `https://i.pravatar.cc/150?u=${Date.now()}`,
+      activo:         true,
+    });
+    onClose();
+  };
+
   return (
-    <form className="space-y-4" onSubmit={e => { e.preventDefault(); onClose(); }}>
+    <form className="space-y-4" onSubmit={handleSubmit}>
       <div className="flex flex-col items-center py-4">
         <div className="h-24 w-24 rounded-2xl bg-muted border-2 border-dashed border-border flex items-center justify-center mb-2">
           <Camera className="h-8 w-8 text-muted-foreground" />
@@ -166,16 +190,23 @@ function FormularioNuevo({ onClose }: { onClose: () => void }) {
         <p className="text-xs text-muted-foreground">Foto para reconocimiento facial</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <div><label className="text-xs font-medium">Nombre completo</label><Input required /></div>
-        <div><label className="text-xs font-medium">DNI</label><Input required /></div>
-        <div><label className="text-xs font-medium">Cargo</label><Input required /></div>
-        <div><label className="text-xs font-medium">Área</label>
-          <Select><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+        <div><label className="text-xs font-medium">Nombre completo</label><Input name="nombre" required /></div>
+        <div><label className="text-xs font-medium">DNI</label><Input name="dni" required /></div>
+        <div><label className="text-xs font-medium">Cargo</label><Input name="cargo" required /></div>
+        <div><label className="text-xs font-medium">Area</label>
+          <Select name="area">
+            <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
             <SelectContent>{areas.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
           </Select>
         </div>
-        <div><label className="text-xs font-medium">Sueldo base</label><Input type="number" required /></div>
-        <div><label className="text-xs font-medium">Fecha ingreso</label><Input type="date" required /></div>
+        <div><label className="text-xs font-medium">Sueldo base</label><Input name="sueldo" type="number" required /></div>
+        <div><label className="text-xs font-medium">Fecha ingreso</label><Input name="ingreso" type="date" required /></div>
+        <div className="col-span-2"><label className="text-xs font-medium">Horario asignado</label>
+          <Select name="horario">
+            <SelectTrigger><SelectValue placeholder="Seleccionar horario" /></SelectTrigger>
+            <SelectContent>{horarios.map(h => <SelectItem key={h.id} value={h.id}>{h.nombre} ({h.entrada}–{h.salida})</SelectItem>)}</SelectContent>
+          </Select>
+        </div>
       </div>
       <div className="flex gap-2 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}><X className="h-4 w-4 mr-1" />Cancelar</Button>
