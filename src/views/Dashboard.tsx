@@ -73,7 +73,22 @@ export default function Dashboard() {
       return horaAhora > h * 60 + m + 30;
     }).slice(0, 4);
 
-    return { presentes, ausentes, tardanzas, totalActivos, semana, dona, tendencia, recientes, alertas };
+    // Tendencia semana: actual vs semana anterior
+    const presActual  = semana.reduce((s, d) => s + d.Puntuales + d.Tardanzas, 0);
+    const presAnterior = Array.from({ length: 7 }).map((_, i) => {
+      const base = new Date(fecha + "T00:00:00");
+      base.setDate(base.getDate() - (13 - i));
+      const f = base.toISOString().slice(0, 10);
+      const d = asistenciasDelDia(f);
+      return d.filter(a => a.estado === "puntual" || a.estado === "tardanza").length;
+    }).reduce((s, n) => s + n, 0);
+    const tendPct = presAnterior > 0
+      ? ((presActual - presAnterior) / presAnterior * 100).toFixed(1)
+      : null;
+    const tendLabel = tendPct !== null ? `${Number(tendPct) >= 0 ? "+" : ""}${tendPct}% vs semana anterior` : "Sin datos previos";
+    const tendPositiva = tendPct === null || Number(tendPct) >= 0;
+
+    return { presentes, ausentes, tardanzas, totalActivos, semana, dona, tendencia, recientes, alertas, tendLabel, tendPositiva };
   }, [fecha]);
 
   return (
@@ -111,8 +126,9 @@ export default function Dashboard() {
               <h3 className="font-semibold">Asistencia de la semana</h3>
               <p className="text-xs text-muted-foreground">Comparativa de los últimos 7 días</p>
             </div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary">
-              <TrendingUp className="h-3.5 w-3.5" /> +4.2% vs semana anterior
+            <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${datos.tendPositiva ? "text-primary" : "text-accent"}`}>
+              <TrendingUp className="h-3.5 w-3.5" />
+              {datos.tendLabel}
             </span>
           </div>
           <ResponsiveContainer width="100%" height={280}>

@@ -1,40 +1,33 @@
-import { useState, FormEvent, useEffect } from "react";
-import { Eye, EyeOff, ShieldCheck, ScanFace, Sparkles, Lock, User } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ShieldCheck, ScanFace, Sparkles, KeyRound } from "lucide-react";
 import { useAuth, useRouter } from "../components/App";
 import { toast } from "sonner";
+import CredentialAuth from "../components/CredentialAuth";
+import FacialAttendance from "../components/FacialAttendance";
+import type { LoginResponse } from "../types/auth";
 
 export default function Login() {
-  const { login, isAuthenticated } = useAuth();
+  const { loginWithCredentials, isAuthenticated } = useAuth();
   const { navigate } = useRouter();
-  const [usuario, setUsuario] = useState("");
-  const [pass, setPass] = useState("");
-  const [show, setShow] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [showAttendance, setShowAttendance] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate("/");
-    }
+    if (isAuthenticated) navigate("/");
   }, [isAuthenticated, navigate]);
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setTimeout(() => {
-      const ok = login(usuario.trim(), pass);
-      if (ok) {
-        toast.success("Bienvenido al sistema", { description: "Sesión iniciada correctamente." });
-        navigate("/");
-      } else {
-        toast.error("Credenciales incorrectas", { description: "Verifica tu usuario y contraseña." });
-      }
-      setLoading(false);
-    }, 500);
+  const handleCredentialSuccess = (_response: LoginResponse) => {
+    toast.success("Bienvenido al sistema", { description: "Sesión iniciada correctamente." });
+    navigate("/");
+  };
+
+  const handleError = (error: string) => {
+    toast.error("Error de autenticación", { description: error });
   };
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-background">
-      {/* Panel izquierdo — branding */}
+
+      {/* ── Panel izquierdo — branding ── */}
       <div className="relative hidden lg:flex flex-col justify-between p-12 bg-gradient-hero text-primary-foreground overflow-hidden">
         <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
         <div className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-accent/30 blur-3xl" />
@@ -64,8 +57,8 @@ export default function Login() {
           <div className="grid grid-cols-3 gap-4 pt-4">
             {[
               { k: "98.7%", v: "Precisión facial" },
-              { k: "<2s", v: "Tiempo de marcación" },
-              { k: "0", v: "Suplantaciones" },
+              { k: "<2s",   v: "Tiempo de marcación" },
+              { k: "0",     v: "Suplantaciones" },
             ].map(s => (
               <div key={s.v} className="rounded-xl bg-white/10 backdrop-blur-sm p-4 border border-white/15">
                 <p className="text-2xl font-bold">{s.k}</p>
@@ -81,80 +74,68 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Panel derecho — formulario */}
+      {/* ── Panel derecho ── */}
       <div className="flex items-center justify-center p-6 lg:p-12">
-        <div className="w-full max-w-md space-y-8 animate-fade-in-up">
-          <div className="lg:hidden flex items-center gap-3 mb-4">
+        <div className="w-full max-w-md space-y-7 animate-fade-in-up">
+
+          {/* Logo móvil */}
+          <div className="lg:hidden flex items-center gap-3 mb-2">
             <div className="h-11 w-11 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
               <ShieldCheck className="h-6 w-6 text-primary-foreground" />
             </div>
             <p className="font-bold text-xl">Lumina</p>
           </div>
 
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">Inicia sesión</h1>
-            <p className="text-muted-foreground">Accede al panel de administración del sistema de asistencia.</p>
+          {/* Encabezado */}
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted border border-border text-xs font-medium text-muted-foreground mb-3">
+              <KeyRound className="h-3 w-3" /> Solo administradores
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight">Acceso al panel</h1>
+            <p className="text-muted-foreground text-sm">
+              Ingresa tus credenciales para acceder al sistema de administración.
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <label htmlFor="usuario" className="text-sm font-medium">Usuario</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  id="usuario"
-                  value={usuario}
-                  onChange={e => setUsuario(e.target.value)}
-                  placeholder="admin"
-                  className="w-full pl-9 pr-4 h-11 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  autoComplete="username"
-                  required
-                />
-              </div>
+          {/* Formulario credenciales */}
+          <CredentialAuth
+            onSuccess={handleCredentialSuccess}
+            onError={handleError}
+            loginFn={loginWithCredentials}
+          />
+
+          {/* Separador */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
             </div>
-
-            <div className="space-y-2">
-              <label htmlFor="pass" className="text-sm font-medium">Contraseña</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  id="pass"
-                  type={show ? "text" : "password"}
-                  value={pass}
-                  onChange={e => setPass(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-9 pr-10 h-11 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  autoComplete="current-password"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShow(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-base"
-                >
-                  {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full h-11 rounded-lg bg-gradient-primary text-primary-foreground font-semibold shadow-glow hover:opacity-95 transition-base disabled:opacity-60"
-            >
-              {loading ? "Verificando..." : "Ingresar al sistema"}
-            </button>
-          </form>
-
-          <div className="rounded-xl border border-dashed border-border bg-muted/40 p-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Credenciales demo</p>
-            <div className="text-sm font-mono space-y-0.5">
-              <p><span className="text-muted-foreground">Usuario:</span> <span className="font-semibold">admin</span></p>
-              <p><span className="text-muted-foreground">Clave:</span> <span className="font-semibold">admin123</span></p>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-background px-3 text-muted-foreground">¿Eres empleado?</span>
             </div>
           </div>
+
+          {/* Botón asistencia facial */}
+          <button
+            id="btn-asistencia-facial"
+            onClick={() => setShowAttendance(true)}
+            className="w-full h-14 rounded-xl border-2 border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-base flex items-center justify-center gap-3 group"
+          >
+            <div className="h-9 w-9 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow group-hover:scale-105 transition-transform">
+              <ScanFace className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-sm text-foreground">Registrar Asistencia Facial</p>
+              <p className="text-xs text-muted-foreground">Marca tu entrada o salida</p>
+            </div>
+          </button>
+
         </div>
       </div>
+
+      {/* ── Modal asistencia ── */}
+      {showAttendance && (
+        <FacialAttendance onClose={() => setShowAttendance(false)} />
+      )}
     </div>
   );
 }
