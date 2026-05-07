@@ -1,4 +1,8 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
+import type { ReactNode } from "react";
+import type { AuthUser } from "../types/auth";
+import type { FacialAuthResponse } from "../types/facial";
+import { authService } from "../services/authService";
 import type { Route } from "../lib/routes";
 import { Toaster } from "./ui/sonner";
 import AppLayout from "./layout/AppLayout";
@@ -15,36 +19,53 @@ import Login from "../views/Login";
 // ─── Auth Context ────────────────────────────────────────────────────────────
 interface AuthCtx {
   isAuthenticated: boolean;
-  user: { username: string } | null;
-  login: (u: string, p: string) => boolean;
+  user: AuthUser | null;
+  // Método credenciales: retorna true si éxito
+  loginWithCredentials: (username: string, password: string) => Promise<boolean>;
+  // Método facial: recibe respuesta ya procesada de facialService
+  loginWithFacial: (facialResponse: FacialAuthResponse) => Promise<boolean>;
   logout: () => void;
 }
 const AuthContext = createContext<AuthCtx | undefined>(undefined);
-const ADMIN_USER = import.meta.env.PUBLIC_LUMINA_ADMIN_USER || "admin";
-const ADMIN_PASS = import.meta.env.PUBLIC_LUMINA_ADMIN_PASS || "admin123";
 const STORAGE_KEY = "lumina_auth";
 
 function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<{ username: string } | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
+  // Rehidratar sesión guardada al montar
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) { 
-      try { 
-        setUser(JSON.parse(raw)); 
-      } catch (e) { 
-        console.error("Error parsing stored auth:", e); 
-      } 
+    if (raw) {
+      try {
+        setUser(JSON.parse(raw));
+      } catch (e) {
+        console.error("Error parsing stored auth:", e);
+      }
     }
     setHydrated(true);
   }, []);
 
-  const login = (username: string, password: string) => {
-    if (username === ADMIN_USER && password === ADMIN_PASS) {
-      const u = { username };
-      setUser(u);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+  const persistUser = (u: AuthUser) => {
+    setUser(u);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+  };
+
+  // Login por credenciales (usuario + contraseña)
+  const loginWithCredentials = async (username: string, password: string): Promise<boolean> => {
+    const response = await authService.loginWithCredentials(username, password);
+    if (response.success && response.user) {
+      persistUser(response.user);
+      return true;
+    }
+    return false;
+  };
+
+  // Login por facial (recibe FacialAuthResponse ya validada)
+  const loginWithFacial = async (facialResponse: FacialAuthResponse): Promise<boolean> => {
+    const response = await authService.loginWithFacial(facialResponse);
+    if (response.success && response.user) {
+      persistUser(response.user);
       return true;
     }
     return false;
@@ -58,7 +79,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
   if (!hydrated) return null;
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated: !!user, user, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated: !!user, user, loginWithCredentials, loginWithFacial, logout }}>
       {children}
     </AuthContext.Provider>
   );

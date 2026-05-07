@@ -1,4 +1,5 @@
-import { ReactNode, useState } from "react";
+import { useState } from "react";
+import type { ReactNode } from "react";
 import {
   LayoutDashboard, ScanFace, Users, BadgePercent, Receipt,
   BarChart3, History, Settings, LogOut, Menu, X, Moon, Sun, Bell, ShieldCheck,
