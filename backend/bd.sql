@@ -1,5 +1,5 @@
 -- ============================================================
---  LUMINA — Base de Datos 
+--  LUMINA — Base de Datos (corregida)
 --  Sistema de Control de Asistencia con Reconocimiento Facial
 --  Motor: MySQL 8+ / MariaDB 10.6+
 -- ============================================================

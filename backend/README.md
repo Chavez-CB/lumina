@@ -101,6 +101,8 @@ PATCH /api/empleados/1/reactivar
 | GET | `/api/stats/ranking-asistencia` | Listado de empleados con mejor puntualidad |
 | GET | `/api/stats/records-empleado/:persona_id` | Historial de récords y logros de un empleado |
 
+
+
 ### Justificaciones (`/api/justificaciones`)
 | Método | Ruta | Descripción |
 | :--- | :--- | :--- |
@@ -129,6 +131,7 @@ PATCH /api/empleados/1/reactivar
 | PUT | `/api/areas/:id` | Actualizar la información de un área existente |
 | DELETE | `/api/areas/:id` | Eliminar un área del sistema |
 
+
 ### Asignaciones (`/api/asignaciones`)
 
 | Método | Ruta | Descripción |
@@ -137,3 +140,15 @@ PATCH /api/empleados/1/reactivar
 | POST | `/api/asignaciones` | Crear una nueva asignación |
 | PATCH | `/api/asignaciones/:id/estado` | Cambiar el estado de una asignación (activar/desactivar) |
 | DELETE | `/api/asignaciones/:id` | Eliminar una asignación del sistema |
+
+
+### Administradores (`/api/admin`)
+
+| Método | Ruta | Descripción |
+| :--- | :--- | :--- |
+| GET | `/api/admin` | Listar administradores (soporta filtros y validación) |
+| GET | `/api/admin/:id` | Detalle de un administrador específico |
+| POST | `/api/admin` | Registrar un nuevo administrador |
+| PUT | `/api/admin/:id` | Editar información de un administrador |
+| PATCH | `/api/admin/:id/baja` | Dar de baja a un administrador (soft delete) |
+| PATCH | `/api/admin/:id/reactivar` | Reactivar a un administrador dado de baja |
