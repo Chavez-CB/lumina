@@ -1,6 +1,6 @@
 import pool from '../config/db.js';
 import faceService from '../services/faceRecognition.service.js';
-import { registrarLog } from './log-reconocimiento.controller.js'; // reutilizamos
+import { registrarLog } from './log-reconocimiento.controller.js';
 
 // ====================== POST /api/reconocimiento/generate ======================
 export const generarEmbedding = async (req, res, next) => {
@@ -17,21 +17,21 @@ export const generarEmbedding = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// ====================== POST /api/reconocimiento/compare (Principal) ======================
+// ====================== POST /api/reconocimiento/compare ======================
 export const compararRostro = async (req, res, next) => {
   const startTime = Date.now();
-  let logData = { endpoint: '/compare', metodo: 'POST', exito: 0 };
+  let logData = { endpoint: '/compare', metodo: 'POST', exito: false };
 
   try {
     if (!req.file) throw new Error('No se envió imagen');
 
     const { area_id, threshold = 0.55 } = req.body;
 
-    // Obtener candidatos con embeddings desde la BD
-    const [personas] = await pool.query(`
-      SELECT id, CONCAT(nombres, ' ', apellidos) as nombre, descriptor_facial 
+    // Obtener candidatos
+    const { rows: personas } = await pool.query(`
+      SELECT id, nombres || ' ' || apellidos as nombre, descriptor_facial 
       FROM personas 
-      WHERE descriptor_facial IS NOT NULL AND activo = 1
+      WHERE descriptor_facial IS NOT NULL AND activo = TRUE
     `);
 
     const candidates = personas.map(p => ({
@@ -54,12 +54,11 @@ export const compararRostro = async (req, res, next) => {
       distancia: faceResult.distance,
       confidence: faceResult.confidence,
       tiempo_respuesta_ms,
-      exito: faceResult.found ? 1 : 0,
+      exito: !!faceResult.found,
       mensaje: faceResult.message,
       persona_id: faceResult.found ? parseInt(faceResult.user_id) : null
     };
 
-    // Registrar log
     await registrarLog({ body: logData }, { status: () => {}, json: () => {} }, () => {});
 
     res.json({

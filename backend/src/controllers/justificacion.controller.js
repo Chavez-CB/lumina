@@ -1,6 +1,6 @@
-import { pool } from '../config/db.js';
+import pool from '../config/db.js';
 
-const httpError = (status, message ) => {
+const httpError = (status, message) => {
   const err = new Error(message);
   err.status = status;
   return err;
@@ -11,22 +11,24 @@ export const crearJustificacion = async (req, res, next) => {
   try {
     const { asistencia_id, persona_id, motivo, documento_url } = req.body;
 
-    // 1. Verificar que la asistencia existe
-    const [[asistencia]] = await pool.query("SELECT id, estado FROM asistencias WHERE id = ?", [asistencia_id]);
-    if (!asistencia) throw httpError(404, 'La asistencia no existe' );
+    const { rows: [asistencia] } = await pool.query(
+      "SELECT id, estado FROM asistencias WHERE id = $1", 
+      [asistencia_id]
+    );
+    if (!asistencia) throw httpError(404, 'La asistencia no existe');
 
-    // 2. Verificar que no tenga ya una justificación
-    const [[existe]] = await pool.query("SELECT id FROM justificaciones WHERE asistencia_id = ?", [asistencia_id]);
-    if (existe) throw httpError(409, 'Esta asistencia ya tiene una justificación registrada' );
+    const { rows: [existe] } = await pool.query(
+      "SELECT id FROM justificaciones WHERE asistencia_id = $1", 
+      [asistencia_id]
+    );
+    if (existe) throw httpError(409, 'Esta asistencia ya tiene una justificación registrada');
 
-    // 3. Insertar justificación
-    const [result] = await pool.query(
+    const { rows: [nuevaJustif] } = await pool.query(
       `INSERT INTO justificaciones (asistencia_id, persona_id, motivo, documento_url, estado)
-       VALUES (?, ?, ?, ?, 'pendiente')`,
+       VALUES ($1, $2, $3, $4, 'pendiente')
+       RETURNING *`,
       [asistencia_id, persona_id, motivo, documento_url || null]
     );
-
-    const [[nuevaJustif]] = await pool.query("SELECT * FROM justificaciones WHERE id = ?", [result.insertId]);
 
     res.status(201).json({
       ok: true,
@@ -40,11 +42,11 @@ export const crearJustificacion = async (req, res, next) => {
 export const listarJustificaciones = async (req, res, next) => {
   try {
     const { estado, persona_id, pagina = 1, limite = 20 } = req.query;
-    const offset = (pagina - 1) * limite;
+    const offset = (parseInt(pagina) - 1) * parseInt(limite);
 
     let query = `
       SELECT j.*, 
-             CONCAT(p.nombres, ' ', p.apellidos) as persona_nombre,
+             p.nombres || ' ' || p.apellidos as persona_nombre,
              a.fecha as asistencia_fecha,
              a.estado as asistencia_estado_original
       FROM justificaciones j
@@ -53,14 +55,15 @@ export const listarJustificaciones = async (req, res, next) => {
       WHERE 1=1
     `;
     const params = [];
+    let index = 1;
 
-    if (estado) { query += " AND j.estado = ?"; params.push(estado); }
-    if (persona_id) { query += " AND j.persona_id = ?"; params.push(persona_id); }
+    if (estado) { query += ` AND j.estado = $${index}`; params.push(estado); index++; }
+    if (persona_id) { query += ` AND j.persona_id = $${index}`; params.push(persona_id); index++; }
 
-    query += " ORDER BY j.created_at DESC LIMIT ? OFFSET ?";
-    params.push(parseInt(limite), parseInt(offset));
+    query += ` ORDER BY j.created_at DESC LIMIT $${index} OFFSET $${index + 1}`;
+    params.push(parseInt(limite), offset);
 
-    const [rows] = await pool.query(query, params);
+    const { rows } = await pool.query(query, params);
     res.json({ ok: true, data: rows });
   } catch (err) { next(err); }
 };
@@ -69,35 +72,31 @@ export const listarJustificaciones = async (req, res, next) => {
 export const revisarJustificacion = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { estado, revisado_por } = req.body; // estado: 'aprobado' o 'rechazado'
+    const { estado, revisado_por } = req.body;
 
     if (!['aprobado', 'rechazado'].includes(estado)) {
-      throw httpError(400, 'Estado de revisión no válido' );
+      throw httpError(400, 'Estado de revisión no válido');
     }
 
-    // 1. Verificar existencia
-    const [[justif]] = await pool.query("SELECT * FROM justificaciones WHERE id = ?", [id]);
-    if (!justif) throw httpError(404, 'Justificación no encontrada' );
+    const { rows: [justif] } = await pool.query(
+      "SELECT * FROM justificaciones WHERE id = $1", [id]
+    );
+    if (!justif) throw httpError(404, 'Justificación no encontrada');
 
-    // 2. Actualizar justificación
     await pool.query(
       `UPDATE justificaciones 
-       SET estado = ?, revisado_por = ?, revisado_en = NOW() 
-       WHERE id = ?`,
+       SET estado = $1, revisado_por = $2, revisado_en = CURRENT_TIMESTAMP 
+       WHERE id = $3`,
       [estado, revisado_por, id]
     );
 
-    // 3. Si se aprueba, actualizar el estado en la tabla de asistencias a 'justificado'
     if (estado === 'aprobado') {
       await pool.query(
-        "UPDATE asistencias SET estado = 'justificado' WHERE id = ?",
+        "UPDATE asistencias SET estado = 'justificado' WHERE id = $1",
         [justif.asistencia_id]
       );
     }
 
-    res.json({
-      ok: true,
-      message: `Justificación ${estado} correctamente`
-    });
+    res.json({ ok: true, message: `Justificación ${estado} correctamente` });
   } catch (err) { next(err); }
 };
