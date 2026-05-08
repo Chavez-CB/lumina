@@ -198,6 +198,7 @@ CREATE TABLE log_reconocimiento (
     INDEX idx_endpoint (endpoint)
 ) ENGINE=InnoDB;
 
+
 -- ============================================================
 -- 9. ÍNDICES ADICIONALES
 -- ============================================================

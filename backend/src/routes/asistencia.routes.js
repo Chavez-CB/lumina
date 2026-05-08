@@ -2,12 +2,17 @@ import { Router } from 'express';
 import * as asistenciaCtrl from '../controllers/asistencia.controller.js';
 import * as estadisticaCtrl from '../controllers/estadistica.controller.js';
 
+
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Rutas de CRUD y Registro
 router.get('/', asistenciaCtrl.listarAsistencias);
 router.post('/registrar', asistenciaCtrl.registrarAsistencia);
 router.get('/:id', asistenciaCtrl.obtenerAsistencia);
+
+// Reconocimiento facial + registro de asistencia (mañana o cualquier hora)
+router.post('/registrar-facial', upload.single('file'), registrarAsistenciaFacial);
 
 // Rutas de Estadísticas, Récords y Rankings
 router.get('/stats/resumen-mensual', estadisticaCtrl.obtenerResumenMensual);
