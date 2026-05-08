@@ -23,7 +23,7 @@ export interface LogReconocimiento {
   area_nombre: string | null
   endpoint: string
   metodo: string
-  exito: 0 | 1
+  exito: boolean
   mensaje: string | null
   faces_detected: number | null
   distancia: number | null
@@ -36,7 +36,7 @@ export interface LogReconocimiento {
 export interface LogReconocimientoFiltros {
   fecha_desde?: string   // yyyy-mm-dd
   fecha_hasta?: string
-  exito?: 0 | 1
+  exito?: boolean
   persona_id?: number
   area_id?: number
   endpoint?: string
@@ -59,7 +59,7 @@ class LogReconocimientoService {
     if (filtros.limite)      query.set("limite",      String(filtros.limite))
     if (filtros.fecha_desde) query.set("fecha_desde", filtros.fecha_desde)
     if (filtros.fecha_hasta) query.set("fecha_hasta", filtros.fecha_hasta)
-    if (filtros.exito !== undefined) query.set("exito", String(filtros.exito))
+    if (filtros.exito !== undefined) query.set("exito", filtros.exito ? "true" : "false")
     if (filtros.persona_id)  query.set("persona_id",  String(filtros.persona_id))
     if (filtros.area_id)     query.set("area_id",     String(filtros.area_id))
     if (filtros.endpoint)    query.set("endpoint",    filtros.endpoint)
@@ -99,7 +99,7 @@ class LogReconocimientoService {
     confianzaPromedio: string
   } {
     const total = logs.length
-    const exitosos = logs.filter(l => l.exito === 1).length
+    const exitosos = logs.filter(l => l.exito === true).length
     const fallidos = total - exitosos
 
     const tiempos = logs.filter(l => l.tiempo_respuesta_ms != null).map(l => l.tiempo_respuesta_ms!)
