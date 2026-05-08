@@ -53,6 +53,56 @@ export const listarAsistencias = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// POST /api/asistencias/registrar
+export const registrarAsistencia = async (req, res, next) => {
+  try {
+    const {
+      persona_id,
+      horario_id,
+      area_id,
+      fecha,
+      hora_entrada,
+      hora_salida,
+      estado = 'presente',
+      observacion,
+      registrado_por
+    } = req.body;
+
+    if (!persona_id || !horario_id || !area_id || !fecha) {
+      throw httpError(400, 'persona_id, horario_id, area_id y fecha son obligatorios');
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO asistencias
+        (persona_id, horario_id, area_id, fecha, hora_entrada, hora_salida,
+         estado, metodo_registro, observacion, registrado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)`,
+      [
+        persona_id,
+        horario_id,
+        area_id,
+        fecha,
+        hora_entrada || null,
+        hora_salida || null,
+        estado,
+        observacion || null,
+        registrado_por || null
+      ]
+    );
+
+    const [[asistencia]] = await pool.query(
+      'SELECT * FROM asistencias WHERE id = ?',
+      [result.insertId]
+    );
+
+    res.status(201).json({
+      ok: true,
+      message: 'Asistencia registrada correctamente',
+      data: asistencia
+    });
+  } catch (err) { next(err); }
+};
+
 // ====================== POST /api/asistencias/registrar-facial ======================
 export const registrarAsistenciaFacial = async (req, res, next) => {
   const startTime = Date.now();
