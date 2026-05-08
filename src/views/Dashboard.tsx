@@ -43,7 +43,7 @@ export default function Dashboard() {
       try {
         // Cargar empleados activos y asistencias de los últimos 30 días en paralelo
         const [emps, asists] = await Promise.all([
-          empleadoService.getAll({ activo: 1 }),
+          empleadoService.getAll({ activo: true }),
           attendanceService.getAll({ limite: 2000 }),
         ]);
         if (!cancelado) {

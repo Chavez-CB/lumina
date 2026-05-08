@@ -32,7 +32,7 @@ class NotificacionService {
 
     try {
       const [empleados, asistenciasHoy] = await Promise.all([
-        empleadoService.getAll({ activo: 1 }),
+        empleadoService.getAll({ activo: true }),
         attendanceService.getByFecha(hoy),
       ])
 

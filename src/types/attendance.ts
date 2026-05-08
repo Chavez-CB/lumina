@@ -9,9 +9,9 @@
 export interface AttendancePayload {
   frameBase64: string
   timestamp: number
-  areaId?: string           // obligatorio para /registrar-facial, opcional en modal de login
+  areaId?: string
   metadata?: {
-    resolution: [number, number]
+    resolution?: [number, number]
     quality: string
     confidence: number
   }
@@ -38,8 +38,8 @@ export interface AttendanceResponse {
   asistencia?: {
     id: number
     fecha: string
-    hora_entrada?: string
-    hora_salida?: string
+    hora_entrada?: string | null
+    hora_salida?: string | null
     estado?: string
     confianza_facial?: number
   }
@@ -58,6 +58,7 @@ export interface AttendanceResponse {
   shift?: "mañana" | "tarde" | "noche"
   // Para errores de red / fallback
   error?: string
+  mejor_distancia?: number
 }
 
 /** Estado interno del hook useFacialAttendance */

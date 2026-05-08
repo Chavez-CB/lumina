@@ -31,7 +31,7 @@ export default function Estadisticas() {
     setCargando(true);
     Promise.all([
       attendanceService.getAll({ limite: 2000 }),
-      empleadoService.getAll({ activo: 1 }),
+      empleadoService.getAll({ activo: true }),
       estadisticaService.getRankingAsistencia(),
       estadisticaService.getEvolucionAnual(year),
       estadisticaService.getDescuentosPorMes(year),

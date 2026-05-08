@@ -94,12 +94,13 @@ function frontendToBackend(data: Omit<Empleado, "id">): Partial<EmpleadoBackend>
 // ── Servicio ──────────────────────────────────────────────────────────────
 
 class EmpleadoService {
-  async getAll(params: { buscar?: string; activo?: 0 | 1; pagina?: number; limite?: number } = {}): Promise<Empleado[]> {
+  async getAll(params: { buscar?: string; activo?: boolean; pagina?: number; limite?: number } = {}): Promise<Empleado[]> {
     const query = new URLSearchParams()
     query.set("limite", String(params.limite ?? 200))
     if (params.pagina) query.set("pagina", String(params.pagina))
     if (params.buscar) query.set("buscar", params.buscar)
-    if (params.activo !== undefined) query.set("activo", String(params.activo))
+    // El controller hace activo === 'true' → enviamos 'true'/'false'
+    if (params.activo !== undefined) query.set("activo", params.activo ? "true" : "false")
 
     const lista = await httpClient.get<EmpleadoBackend[]>(`/empleados?${query}`)
     return Array.isArray(lista) ? lista.map(backendToFrontend) : []

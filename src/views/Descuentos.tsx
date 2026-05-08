@@ -14,7 +14,7 @@ export default function Descuentos() {
 
   useEffect(() => {
     Promise.all([
-      empleadoService.getAll({ activo: 1 }),
+      empleadoService.getAll({ activo: true }),
       attendanceService.getAll({ limite: 2000 }),
     ]).then(([e, a]) => { setEmpleados(e); setAsist(a); }).catch(console.error);
   }, []);

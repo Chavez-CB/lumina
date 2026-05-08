@@ -1,78 +1,158 @@
 /**
- * Attendance Service — Registro de asistencia facial de empleados
+ * Attendance Service — Registro y consulta de asistencias
  *
- * Diferente de facialService.ts (que es para login de admins).
- * Este servicio registra la asistencia via reconocimiento facial.
+ * Backend:
+ *   POST /api/asistencias/registrar-facial  ← multipart: file + area_id + threshold
+ *   POST /api/asistencias/registrar         ← manual: persona_id, horario_id, area_id, fecha...
+ *   GET  /api/asistencias                   ← { ok, data: [...], meta: {...} }
  *
- * POST /api/asistencias/registrar-facial  — multipart/form-data { file, area_id, threshold? }
- * GET  /api/asistencias                   — listar asistencias (paginado)
+ * Schema real (PostgreSQL):
+ *   id              SERIAL
+ *   persona_id      INT
+ *   horario_id      INT
+ *   area_id         INT
+ *   fecha           DATE        "yyyy-mm-dd"
+ *   hora_entrada    TIME
+ *   hora_salida     TIME
+ *   estado          VARCHAR     'puntual'|'tardanza'|'ausente'|'justificado'
+ *   metodo_registro VARCHAR     'facial'|'manual'|'qr'|'rfid'
+ *   observacion     TEXT
+ *   registrado_por  INT
+ *   -- Campos JOIN en el GET listado --
+ *   persona_nombre  VARCHAR
+ *   horario_nombre  VARCHAR
+ *   area_nombre     VARCHAR
  */
 
-import type { AttendancePayload, AttendanceResponse } from "@/types/attendance"
-import type { EstadoAsistencia } from "@/types/asistencia"
 import { httpClient } from "@/lib/api/client"
 
-// ── Tipo crudo del backend ────────────────────────────────────────────────
+// ── Tipos backend ──────────────────────────────────────────────────────────
 
 export interface AsistenciaBackend {
   id: number
   persona_id: number
+  horario_id: number
+  area_id: number | null
   fecha: string
   hora_entrada: string | null
   hora_salida: string | null
-  horas_trabajadas: number
-  estado: EstadoAsistencia
-  metodo: string
-  confianza_facial?: number
-  // Datos del empleado (cuando el backend hace JOIN)
+  estado: string
+  metodo_registro: string
+  observacion: string | null
+  // Campos de JOIN
   persona_nombre?: string
-  foto_url?: string
-  cargo?: string
+  horario_nombre?: string
   area_nombre?: string
+  // campos legacy (por si el backend los pone)
+  cargo?: string
 }
 
-// ── Tipo del frontend ─────────────────────────────────────────────────────
+// ── Tipo frontend ──────────────────────────────────────────────────────────
 
 export interface Asistencia {
   id: string
   empleadoId: string
   fecha: string
-  entrada: string | null
-  salida: string | null
-  horasTrabajadas: number
-  estado: EstadoAsistencia
-  metodo: "facial"
-  confianzaFacial?: number
-  // Datos del empleado (si el backend los incluye)
-  nombreEmpleado?: string
-  fotoEmpleado?: string
+  horaEntrada: string
+  horaSalida: string
+  estado: "puntual" | "tardanza" | "ausente" | "justificado"
+  metodo: string
+  observacion: string
+  nombreEmpleado: string
+  horarioNombre: string
+  areaNombre: string
   cargoEmpleado?: string
-  areaEmpleado?: string
+  // ── Aliases para compatibilidad con vistas ─────────────────────────────
+  entrada: string        // alias de horaEntrada
+  salida: string         // alias de horaSalida
+  horasTrabajadas: number // calculado
+  fotoEmpleado?: string
+  areaEmpleado: string   // alias de areaNombre
 }
 
-// ── Adaptador ─────────────────────────────────────────────────────────────
+// ── Payload para registro facial ───────────────────────────────────────────
 
-export function backendToAsistencia(b: AsistenciaBackend): Asistencia {
+export interface AttendancePayload {
+  frameBase64: string
+  areaId?: string
+  timestamp?: number
+  metadata?: {
+    resolution?: [number, number]
+    quality: string
+    confidence: number
+  }
+}
+
+// ── Respuesta de /registrar-facial ────────────────────────────────────────
+
+export interface AttendanceResponse {
+  found: boolean
+  ok?: boolean
+  message?: string
+  error?: string
+  persona_id?: number
+  nombre?: string
+  // Tipo de marcación detectado por el backend
+  tipo?: "entrada" | "salida"
+  // Datos de la asistencia registrada
+  asistencia?: {
+    id: number
+    fecha: string
+    hora_entrada?: string | null
+    hora_salida?: string | null
+    estado?: string
+    confianza_facial?: number
+  }
+  // Métricas de comparación facial
+  face?: {
+    distance: number
+    confidence: number
+  }
+  mejor_distancia?: number
+  // Campos legacy (hook useFacialAttendance)
+  success?: boolean
+  employee?: { id: string; nombre: string; username: string }
+  timestamp?: string
+  shift?: "mañana" | "tarde" | "noche"
+}
+
+// ── Adaptador ──────────────────────────────────────────────────────────────
+
+function calcularHoras(entrada: string, salida: string): number {
+  if (!entrada || !salida) return 0
+  const [eh, em] = entrada.split(":").map(Number)
+  const [sh, sm] = salida.split(":").map(Number)
+  const mins = (sh * 60 + sm) - (eh * 60 + em)
+  return mins > 0 ? +(mins / 60).toFixed(2) : 0
+}
+
+function backendToAsistencia(b: AsistenciaBackend): Asistencia {
+  const horaEntrada = b.hora_entrada ?? ""
+  const horaSalida  = b.hora_salida  ?? ""
   return {
     id: String(b.id),
     empleadoId: String(b.persona_id),
     fecha: b.fecha,
-    entrada: b.hora_entrada,
-    salida: b.hora_salida,
-    horasTrabajadas: b.horas_trabajadas ?? 0,
-    estado: b.estado,
-    metodo: "facial",
-    confianzaFacial: b.confianza_facial,
-    nombreEmpleado: b.persona_nombre,
-    fotoEmpleado: b.foto_url,
+    horaEntrada,
+    horaSalida,
+    estado: (b.estado as Asistencia["estado"]) ?? "ausente",
+    metodo: b.metodo_registro ?? "manual",
+    observacion: b.observacion ?? "",
+    nombreEmpleado: b.persona_nombre ?? "",
+    horarioNombre: b.horario_nombre ?? "",
+    areaNombre: b.area_nombre ?? "",
     cargoEmpleado: b.cargo,
-    areaEmpleado: b.area_nombre,
+    // aliases
+    entrada: horaEntrada,
+    salida: horaSalida,
+    horasTrabajadas: calcularHoras(horaEntrada, horaSalida),
+    fotoEmpleado: undefined,
+    areaEmpleado: b.area_nombre ?? "",
   }
 }
 
 /**
  * Convierte base64 (con o sin prefijo data:) a Blob JPEG.
- * Necesario para construir el FormData de multipart.
  */
 export function base64ToBlob(base64: string, mimeType = "image/jpeg"): Blob {
   const binary = atob(base64.replace(/^data:[^;]+;base64,/, ""))
@@ -81,18 +161,28 @@ export function base64ToBlob(base64: string, mimeType = "image/jpeg"): Blob {
   return new Blob([bytes], { type: mimeType })
 }
 
-// ── Servicio ──────────────────────────────────────────────────────────────
+// ── Tipo de respuesta del listado ─────────────────────────────────────────
+
+type ListResponse =
+  | { ok: boolean; data: AsistenciaBackend[]; meta?: unknown }
+  | AsistenciaBackend[]
+
+function unwrapList(res: ListResponse): AsistenciaBackend[] {
+  if (Array.isArray(res)) return res
+  const wrapped = res as { data?: AsistenciaBackend[] }
+  return Array.isArray(wrapped.data) ? wrapped.data : []
+}
+
+// ── Servicio ───────────────────────────────────────────────────────────────
 
 class AttendanceService {
   /**
    * Registrar asistencia facial.
    *
-   * Envía la foto como multipart/form-data al endpoint /registrar-facial
-   * que realiza el reconocimiento y el registro de asistencia en un solo paso.
-   *
+   * Envía la foto como multipart/form-data al endpoint /registrar-facial.
    * Campos del FormData:
-   *   file     — imagen JPEG capturada de la cámara
-   *   area_id  — ID del área donde se realiza la marcación (obligatorio)
+   *   file      — imagen JPEG capturada de la cámara
+   *   area_id   — ID del área donde se realiza la marcación (obligatorio)
    *   threshold — umbral de similitud facial (default 0.55)
    */
   async register(payload: AttendancePayload): Promise<AttendanceResponse> {
@@ -122,11 +212,13 @@ class AttendanceService {
   }
 
   /**
-   * Obtener listado de asistencias.
-   * @param fecha      - Filtrar por fecha exacta (yyyy-mm-dd)
-   * @param persona_id - Filtrar por persona
-   * @param estado     - Filtrar por estado
-   * @param limite     - Máximo de registros (default 500)
+   * Obtener listado de asistencias con filtros.
+   *
+   * @param fecha       Filtrar por fecha exacta (yyyy-mm-dd)
+   * @param persona_id  Filtrar por persona
+   * @param estado      Filtrar por estado ('puntual'|'tardanza'|'ausente'|'justificado')
+   * @param limite      Máximo de registros (default 500)
+   * @param pagina      Página (default 1)
    */
   async getAll(params: {
     fecha?: string
@@ -137,14 +229,13 @@ class AttendanceService {
   } = {}): Promise<Asistencia[]> {
     const query = new URLSearchParams()
     query.set("limite", String(params.limite ?? 500))
-    if (params.pagina)    query.set("pagina",     String(params.pagina))
-    if (params.fecha)     query.set("fecha",      params.fecha)
-    if (params.persona_id) query.set("persona_id", params.persona_id)
-    if (params.estado)    query.set("estado",     params.estado)
+    if (params.pagina)     query.set("pagina",      String(params.pagina))
+    if (params.fecha)      query.set("fecha",        params.fecha)
+    if (params.persona_id) query.set("persona_id",   params.persona_id)
+    if (params.estado)     query.set("estado",       params.estado)
 
-    const res = await httpClient.get<{ ok: boolean; data: AsistenciaBackend[] }>(`/asistencias?${query}`)
-    const lista = (res as unknown as AsistenciaBackend[]) ?? (res as { data: AsistenciaBackend[] })?.data ?? []
-    return Array.isArray(lista) ? lista.map(backendToAsistencia) : []
+    const res = await httpClient.get<ListResponse>(`/asistencias?${query}`)
+    return unwrapList(res).map(backendToAsistencia)
   }
 
   /**

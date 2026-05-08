@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import { configService } from "../services/configService";
 import { horarioService } from "../services/horarioService";
 import type { Horario } from "../services/horarioService";
+import { areaService } from "../services/areaService";
+import type { Area } from "../services/areaService";
 
 const DIAS_LABELS = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"];
 
@@ -20,28 +22,49 @@ function FormularioHorario({
   initial,
   onSave,
   onCancel,
+  areas,
 }: {
   initial?: Partial<Horario>;
   onSave: (data: Omit<Horario, "id">) => void;
   onCancel: () => void;
+  areas: Area[];
 }) {
   const [nombre,     setNombre]     = useState(initial?.nombre     ?? "");
   const [entrada,    setEntrada]    = useState(initial?.entrada    ?? "08:00");
   const [salida,     setSalida]     = useState(initial?.salida     ?? "17:00");
   const [tolerancia, setTolerancia] = useState(initial?.toleranciaMinutos?.toString() ?? "10");
   const [dias,       setDias]       = useState<number[]>(initial?.diasLaborables ?? [1,2,3,4,5]);
+  const [areaId,     setAreaId]     = useState(initial?.areaId ?? "");
 
   const toggleDia = (d: number) =>
     setDias(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort());
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ nombre, entrada, salida, toleranciaMinutos: parseInt(tolerancia), diasLaborables: dias });
+    if (!areaId) { alert("Selecciona un área para el horario"); return; }
+    onSave({ nombre, entrada, salida, toleranciaMinutos: parseInt(tolerancia), diasLaborables: dias, areaId });
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 pt-2">
       <Campo label="Nombre del horario" value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej: Turno tarde" required />
+      {/* Área */}
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1.5">
+          Área / Aula
+        </label>
+        <select
+          value={areaId}
+          onChange={e => setAreaId(e.target.value)}
+          required
+          className="w-full h-11 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">Selecciona un área...</option>
+          {areas.map(a => (
+            <option key={a.id} value={a.id}>{a.nombre}</option>
+          ))}
+        </select>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Campo label="Hora entrada" type="time" value={entrada} onChange={e => setEntrada(e.target.value)} required />
         <Campo label="Hora salida"  type="time" value={salida}  onChange={e => setSalida(e.target.value)}  required />
@@ -84,10 +107,14 @@ export default function Configuracion() {
   const [diasLab,   setDiasLab]   = useState<number[]>(cfg.diasLaborables);
   const [cuenta,    setCuenta]    = useState({ passwordActual: "", nuevoUsuario: "", passwordNuevo: "" });
   const [horarios,  setHorarios]  = useState<Horario[]>([]);
+  const [areas,     setAreas]     = useState<Area[]>([]);
   const [openHorario, setOpenHorario] = useState(false);
   const [editandoHorario, setEditandoHorario] = useState<Horario | null>(null);
 
-  useEffect(() => { horarioService.getAll().then(setHorarios); }, []);
+  useEffect(() => {
+    horarioService.getAll().then(setHorarios);
+    areaService.getAll().then(setAreas);
+  }, []);
 
   const setE = (k: keyof typeof empresa) => (v: string) => setEmpresa(prev => ({ ...prev, [k]: v }));
   const setD = (k: keyof typeof descuentos) => (v: string) => setDesc(prev => ({ ...prev, [k]: parseFloat(v) || 0 }));
@@ -275,7 +302,7 @@ export default function Configuracion() {
       <Dialog open={openHorario} onOpenChange={setOpenHorario}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Nuevo horario</DialogTitle></DialogHeader>
-          <FormularioHorario onSave={handleCreateHorario} onCancel={() => setOpenHorario(false)} />
+          <FormularioHorario onSave={handleCreateHorario} onCancel={() => setOpenHorario(false)} areas={areas} />
         </DialogContent>
       </Dialog>
 
@@ -288,7 +315,9 @@ export default function Configuracion() {
               initial={editandoHorario}
               onSave={handleEditHorario}
               onCancel={() => setEditandoHorario(null)}
+              areas={areas}
             />
+
           )}
         </DialogContent>
       </Dialog>
