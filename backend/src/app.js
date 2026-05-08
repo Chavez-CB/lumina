@@ -11,6 +11,8 @@ import asistenciaRoutes from './routes/asistencia.routes.js';
 import horarioRoutes from './routes/horario.routes.js';
 import areaRoutes from './routes/area.routes.js';
 import asignacionRoutes from './routes/asignacion.routes.js';
+import logReconocimientoRoutes from './routes/log-reconocimiento.routes.js';
+import reconocimientoRoutes from './routes/reconocimiento.routes.js';
 
 
 const app  = express();
@@ -32,6 +34,8 @@ app.use('/api/asistencias', asistenciaRoutes);
 app.use('/api/horarios', horarioRoutes);
 app.use('/api/areas', areaRoutes);
 app.use('/api/asignaciones', asignacionRoutes);
+app.use('/api/reconocimiento', reconocimientoRoutes);
+app.use('/api/logs/reconocimiento', logReconocimientoRoutes);
 
 
 

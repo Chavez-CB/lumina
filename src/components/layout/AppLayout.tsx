@@ -106,12 +106,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border">
-          <div className="rounded-xl bg-gradient-primary p-4 text-primary-foreground shadow-glow">
-            <p className="text-xs font-semibold uppercase tracking-wider opacity-90">Version Demo</p>
-            <p className="text-sm mt-1">Datos simulados para demostracion del sistema.</p>
-          </div>
-        </div>
+
       </>
     );
   }
