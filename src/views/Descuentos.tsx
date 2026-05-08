@@ -1,13 +1,27 @@
 // Módulo de Descuentos — cálculo automático por tardanzas y faltas
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TrendingDown, Clock, UserX, Wallet } from "lucide-react";
-import { empleados, getAsistencias, configDescuentos } from "../lib/mockData";
+import { configDescuentos } from "../lib/mockData";
+import { empleadoService } from "../services/empleadoService";
+import type { Empleado } from "../services/empleadoService";
+import { attendanceService } from "../services/attendanceService";
+import type { Asistencia } from "../services/attendanceService";
 import KpiCard from "../components/KpiCard";
 
 export default function Descuentos() {
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [asistencias, setAsist]   = useState<Asistencia[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      empleadoService.getAll({ activo: 1 }),
+      attendanceService.getAll({ limite: 2000 }),
+    ]).then(([e, a]) => { setEmpleados(e); setAsist(a); }).catch(console.error);
+  }, []);
+
   const data = useMemo(() => {
     return empleados.map(e => {
-      const asist = getAsistencias().filter(a => a.empleadoId === e.id);
+      const asist = asistencias.filter(a => a.empleadoId === e.id);
       const tardanzas = asist.filter(a => a.estado === "tardanza").length;
       const faltas = asist.filter(a => a.estado === "ausente").length;
       const sueldoDiario = e.sueldoBase / 30;
@@ -16,7 +30,7 @@ export default function Descuentos() {
       const subtotal = e.sueldoBase - descTard - descFalta;
       return { e, tardanzas, faltas, descTard, descFalta, subtotal };
     });
-  }, []);
+  }, [empleados, asistencias]);
 
   const totalTard = data.reduce((s, d) => s + d.descTard, 0);
   const totalFalta = data.reduce((s, d) => s + d.descFalta, 0);

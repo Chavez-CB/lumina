@@ -1,5 +1,5 @@
 /**
- * Types para el sistema de Asistencia Facial
+ * Types para el sistema de Asistencia Facial de empleados
  * Separado de facial.ts (que es para autenticación de admins)
  */
 
@@ -14,16 +14,23 @@ export interface AttendancePayload {
   }
 }
 
+/** Empleado reconocido (retornado por el backend al registrar asistencia) */
+export interface AttendanceEmployee {
+  id: string
+  nombre: string
+  username?: string
+  cargo?: string
+  foto_url?: string
+}
+
 /** Respuesta del backend al registrar asistencia */
 export interface AttendanceResponse {
   success: boolean
-  employee?: {
-    id: string
-    nombre: string
-    username: string
-  }
+  employee?: AttendanceEmployee
   timestamp?: string
+  tipo?: "entrada" | "salida"
   shift?: "mañana" | "tarde" | "noche"
+  estado?: "puntual" | "tardanza"
   error?: string
 }
 

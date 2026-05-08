@@ -4,19 +4,73 @@
  * Diferente de facialService.ts (login de admins).
  * Este servicio registra la asistencia via reconocimiento facial.
  *
- * El backend recibe la foto como multipart/form-data con el campo "foto".
- * La foto es un Blob JPEG extraido del video en el momento de la captura.
- *
- * HOY: Mock 90% exito, ignora el payload
- * FUTURO: POST /attendance/facial  (multipart/form-data)
+ * POST /api/asistencias/registrar  — multipart/form-data con campo "foto"
+ * GET  /api/asistencias            — listar asistencias (paginado)
  */
 
 import type { AttendancePayload, AttendanceResponse } from "@/types/attendance"
-// import { httpClient } from "@/lib/api/client"
+import type { EstadoAsistencia } from "@/types/asistencia"
+import { httpClient } from "@/lib/api/client"
+
+// ── Tipo crudo del backend ────────────────────────────────────────────────
+
+export interface AsistenciaBackend {
+  id: number
+  persona_id: number
+  fecha: string
+  hora_entrada: string | null
+  hora_salida: string | null
+  horas_trabajadas: number
+  estado: EstadoAsistencia
+  metodo: string
+  // Datos del empleado (cuando el backend hace JOIN)
+  nombres?: string
+  apellidos?: string
+  foto_url?: string
+  cargo?: string
+  area?: string
+}
+
+// ── Tipo del frontend ─────────────────────────────────────────────────────
+
+export interface Asistencia {
+  id: string
+  empleadoId: string
+  fecha: string
+  entrada: string | null
+  salida: string | null
+  horasTrabajadas: number
+  estado: EstadoAsistencia
+  metodo: "facial"
+  // Datos del empleado (si el backend los incluye)
+  nombreEmpleado?: string
+  fotoEmpleado?: string
+  cargoEmpleado?: string
+  areaEmpleado?: string
+}
+
+// ── Adaptador ─────────────────────────────────────────────────────────────
+
+export function backendToAsistencia(b: AsistenciaBackend): Asistencia {
+  return {
+    id: String(b.id),
+    empleadoId: String(b.persona_id),
+    fecha: b.fecha,
+    entrada: b.hora_entrada,
+    salida: b.hora_salida,
+    horasTrabajadas: b.horas_trabajadas ?? 0,
+    estado: b.estado,
+    metodo: "facial",
+    nombreEmpleado: b.nombres && b.apellidos ? `${b.nombres} ${b.apellidos}`.trim() : undefined,
+    fotoEmpleado: b.foto_url,
+    cargoEmpleado: b.cargo,
+    areaEmpleado: b.area,
+  }
+}
 
 /**
- * Convierte un string base64 (sin prefijo data:) a Blob JPEG.
- * Util para construir el FormData que espera el backend.
+ * Convierte base64 (con o sin prefijo data:) a Blob JPEG.
+ * Necesario para construir el FormData de multipart.
  */
 export function base64ToBlob(base64: string, mimeType = "image/jpeg"): Blob {
   const binary = atob(base64.replace(/^data:[^;]+;base64,/, ""))
@@ -25,56 +79,59 @@ export function base64ToBlob(base64: string, mimeType = "image/jpeg"): Blob {
   return new Blob([bytes], { type: mimeType })
 }
 
+// ── Servicio ──────────────────────────────────────────────────────────────
+
 class AttendanceService {
+  /**
+   * Registrar asistencia facial.
+   * Envía la foto como multipart/form-data al backend.
+   */
   async register(payload: AttendancePayload): Promise<AttendanceResponse> {
     try {
-      // ====== HOY (SIN BACKEND) ======
-      return await this.mockRegister(payload)
+      const fotoBlob = base64ToBlob(payload.frameBase64)
+      const form = new FormData()
+      form.append("foto", fotoBlob, "captura.jpg")
+      form.append("timestamp", payload.timestamp.toString())
 
-      // ====== FUTURO (CON BACKEND) ======
-      // La foto se envía como multipart/form-data para que el backend pueda
-      // comparar directamente el Blob con las fotos almacenadas.
-      //
-      // const fotoBlob = base64ToBlob(payload.frameBase64)
-      // const form = new FormData()
-      // form.append("foto", fotoBlob, "captura.jpg")
-      // form.append("timestamp", payload.timestamp.toString())
-      // if (payload.metadata) {
-      //   form.append("calidad", payload.metadata.quality)
-      //   form.append("confianza", payload.metadata.confidence.toString())
-      //   form.append("resolucion", payload.metadata.resolution.join("x"))
-      // }
-      // return await httpClient.postForm<AttendanceResponse>("/attendance/facial", form, { timeout: 15000 })
+      if (payload.metadata) {
+        form.append("calidad", payload.metadata.quality)
+        form.append("confianza", payload.metadata.confidence.toString())
+        form.append("resolucion", payload.metadata.resolution.join("x"))
+      }
+
+      const data = await httpClient.postForm<AttendanceResponse>(
+        "/asistencias/registrar",
+        form,
+        { timeout: 20000 }
+      )
+
+      return { ...data, success: data.success ?? true }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error"
+      const message = error instanceof Error ? error.message : "Error desconocido"
       return { success: false, error: `Error al registrar asistencia: ${message}` }
     }
   }
 
-  private detectShift(): "mañana" | "tarde" | "noche" {
-    const hour = new Date().getHours()
-    if (hour >= 6 && hour < 14) return "mañana"
-    if (hour >= 14 && hour < 22) return "tarde"
-    return "noche"
+  /**
+   * Obtener listado de asistencias.
+   * @param fecha  - Filtrar por fecha exacta (yyyy-mm-dd)
+   * @param limite - Máximo de registros (default 500)
+   */
+  async getAll(params: { fecha?: string; limite?: number; pagina?: number } = {}): Promise<Asistencia[]> {
+    const query = new URLSearchParams()
+    query.set("limite", String(params.limite ?? 500))
+    if (params.pagina) query.set("pagina", String(params.pagina))
+    if (params.fecha) query.set("fecha", params.fecha)
+
+    const lista = await httpClient.get<AsistenciaBackend[]>(`/asistencias?${query}`)
+    return Array.isArray(lista) ? lista.map(backendToAsistencia) : []
   }
 
-  private mockRegister(_payload: AttendancePayload): Promise<AttendanceResponse> {
-    const delay = Math.random() * 300 + 200
-    return new Promise(resolve => {
-      setTimeout(() => {
-        const success = Math.random() > 0.1
-        if (success) {
-          resolve({
-            success: true,
-            employee: { id: "emp_001", nombre: "Carlos Mendoza", username: "carlos.mendoza" },
-            timestamp: new Date().toISOString(),
-            shift: this.detectShift(),
-          })
-        } else {
-          resolve({ success: false, error: "Rostro no reconocido en la base de datos" })
-        }
-      }, delay)
-    })
+  /**
+   * Obtener asistencias de una fecha específica.
+   */
+  async getByFecha(fecha: string): Promise<Asistencia[]> {
+    return this.getAll({ fecha })
   }
 }
 

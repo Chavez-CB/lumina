@@ -1,30 +1,48 @@
 // Modulo de Historial — registros reales completos
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, Download, FileText, Pencil, History } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { getAsistencias, obtenerEmpleado, empleados } from "../lib/mockData";
 import EstadoBadge from "../components/EstadoBadge";
+import { attendanceService } from "../services/attendanceService";
+import type { Asistencia } from "../services/attendanceService";
+import { empleadoService } from "../services/empleadoService";
+import type { Empleado } from "../services/empleadoService";
 import { historialService } from "../services/historialService";
 import { exportarCSV, exportarPDF } from "../lib/exportUtils";
 
 export default function Historial() {
-  const [q, setQ] = useState("");
+  const [q, setQ]               = useState("");
   const [tabActiva, setTabActiva] = useState("asistencia");
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [year, setYear]         = useState(new Date().getFullYear());
+  const [asistencias, setAsist] = useState<Asistencia[]>([]);
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [histDesc, setHistDesc] = useState<Awaited<ReturnType<typeof historialService.getDescuentosPorMes>>>([]);
+  const [cargando, setCargando] = useState(true);
 
-  const ordenadas = [...getAsistencias()].sort((a, b) =>
-    (b.fecha + (b.entrada ?? "")).localeCompare(a.fecha + (a.entrada ?? ""))
-  );
+  useEffect(() => {
+    Promise.all([
+      attendanceService.getAll({ limite: 2000 }),
+      empleadoService.getAll(),
+      historialService.getDescuentosPorMes(year),
+    ]).then(([a, e, h]) => {
+      setAsist([...a].sort((x, y) => (y.fecha + (y.entrada ?? "")).localeCompare(x.fecha + (x.entrada ?? ""))));
+      setEmpleados(e);
+      setHistDesc(h);
+      setCargando(false);
+    }).catch(() => setCargando(false));
+  }, [year]);
 
+  const obtenerEmpleado = (id: string) => empleados.find(e => e.id === id);
+
+  const ordenadas = asistencias;
   const filtradas = ordenadas.filter(a => {
     const e = obtenerEmpleado(a.empleadoId);
     return e?.nombre.toLowerCase().includes(q.toLowerCase()) || a.fecha.includes(q);
   }).slice(0, 100);
 
-  const histDesc = historialService.getDescuentosPorMes(year);
-  const cambios   = historialService.getCambios();
+  const cambios = historialService.getCambios();
 
   // ── Exportar asistencia ──────────────────────────────────────────────────
   const exportAsistenciaCSV = () => {

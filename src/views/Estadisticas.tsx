@@ -1,74 +1,92 @@
 // Modulo de Estadisticas — analisis visual completo
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Award, TrendingDown, AlertTriangle, Activity, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis, Legend,
 } from "recharts";
-import { empleados, getAsistencias, areas, configDescuentos } from "../lib/mockData";
 import { estadisticaService } from "../services/estadisticaService";
+import type { RankingEmpleado } from "../services/estadisticaService";
+import { attendanceService } from "../services/attendanceService";
+import type { Asistencia } from "../services/attendanceService";
+import { empleadoService } from "../services/empleadoService";
+import type { Empleado } from "../services/empleadoService";
 import KpiCard from "../components/KpiCard";
+
+const AREAS = ["Ventas", "Tecnologia", "Finanzas", "Recursos Humanos", "Marketing", "Logistica", "Administracion"];
 
 const C = { primary: "hsl(162 65% 42%)", accent: "hsl(345 65% 42%)", warning: "hsl(38 92% 50%)", muted: "hsl(215 14% 65%)" };
 
 export default function Estadisticas() {
   const [year, setYear] = useState(new Date().getFullYear());
+  const [asistencias, setAsist] = useState<Asistencia[]>([]);
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [ranking, setRanking] = useState<RankingEmpleado[]>([]);
+  const [evolucion, setEvolucion] = useState<{ mes: string; asistencia: number }[]>([]);
+  const [descMes, setDescMes] = useState<{ mes: string; Descuentos: number }[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    setCargando(true);
+    Promise.all([
+      attendanceService.getAll({ limite: 2000 }),
+      empleadoService.getAll({ activo: 1 }),
+      estadisticaService.getRankingAsistencia(),
+      estadisticaService.getEvolucionAnual(year),
+      estadisticaService.getDescuentosPorMes(year),
+    ]).then(([a, e, r, ev, dm]) => {
+      setAsist(a); setEmpleados(e); setRanking(r); setEvolucion(ev); setDescMes(dm);
+      setCargando(false);
+    }).catch(() => setCargando(false));
+  }, [year]);
 
   const data = useMemo(() => {
     // Asistencia diaria 30 dias
     const diaria = Array.from({ length: 30 }).map((_, i) => {
       const f = (() => { const d = new Date(); d.setDate(d.getDate() - (29 - i)); return d.toISOString().slice(0, 10); })();
-      const d = getAsistencias().filter(a => a.fecha === f);
+      const d = asistencias.filter(a => a.fecha === f);
       return {
-        d: new Date(f).getDate().toString(),
+        d: new Date(f + "T12:00:00").getDate().toString(),
         Asistencias: d.filter(a => a.estado !== "ausente").length,
         Faltas: d.filter(a => a.estado === "ausente").length,
       };
     });
 
     // Dona puntualidad mes
-    const totalMes = getAsistencias().length || 1;
+    const totalMes = asistencias.length || 1;
     const dona = [
-      { name: "Puntual",     value: getAsistencias().filter(a => a.estado === "puntual").length,     color: C.primary  },
-      { name: "Tardanza",    value: getAsistencias().filter(a => a.estado === "tardanza").length,    color: C.warning  },
-      { name: "Ausente",     value: getAsistencias().filter(a => a.estado === "ausente").length,     color: C.accent   },
-      { name: "Justificado", value: getAsistencias().filter(a => a.estado === "justificado").length, color: C.muted    },
+      { name: "Puntual",     value: asistencias.filter(a => a.estado === "puntual").length,     color: C.primary  },
+      { name: "Tardanza",    value: asistencias.filter(a => a.estado === "tardanza").length,    color: C.warning  },
+      { name: "Ausente",     value: asistencias.filter(a => a.estado === "ausente").length,     color: C.accent   },
+      { name: "Justificado", value: asistencias.filter(a => a.estado === "justificado").length, color: C.muted    },
     ];
     const pctAsist = ((dona[0].value + dona[1].value) / totalMes * 100).toFixed(1);
 
-    // Evolucion anual — datos reales del mes actual, seeded para historicos
-    const evolucion = estadisticaService.getEvolucionAnual(year);
+    // Ranking (del backend)
+    const rankingFmt = ranking.slice(0, 7).map(r => ({
+      nombre: r.nombre.split(" ").slice(0, 2).join(" "),
+      puntuales: r.puntuales,
+    }));
 
-    // Ranking puntuales
-    const ranking = empleados.map(e => {
-      const a = getAsistencias().filter(x => x.empleadoId === e.id);
-      const p = a.filter(x => x.estado === "puntual").length;
-      return { nombre: e.nombre.split(" ")[0] + " " + (e.nombre.split(" ")[1] ?? ""), puntuales: p };
-    }).sort((a, b) => b.puntuales - a.puntuales).slice(0, 7);
-
-    // Tardanzas por area
-    const porArea = areas.map(ar => {
-      const empAr = empleados.filter(e => e.area === ar).map(e => e.id);
-      const aAr = getAsistencias().filter(a => empAr.includes(a.empleadoId));
+    // Tardanzas por area usando empleados del backend
+    const porArea = AREAS.map(ar => {
+      const empIds = empleados.filter(e => e.area === ar).map(e => e.id);
+      const aAr = asistencias.filter(a => empIds.includes(a.empleadoId));
       return {
         area: ar.length > 12 ? ar.slice(0, 11) + "..." : ar,
         Tardanzas: aAr.filter(a => a.estado === "tardanza").length,
-        Faltas: aAr.filter(a => a.estado === "ausente").length,
+        Faltas:    aAr.filter(a => a.estado === "ausente").length,
       };
     });
 
-    // Descuentos por mes — datos reales del mes actual, seeded para historicos
-    const descMes = estadisticaService.getDescuentosPorMes(year);
+    const masPuntual    = rankingFmt[0];
+    const areaTopTard   = [...porArea].sort((a, b) => b.Tardanzas - a.Tardanzas)[0];
+    const totalTardanzas = asistencias.filter(a => a.estado === "tardanza").length;
+    const totalFaltas    = asistencias.filter(a => a.estado === "ausente").length;
+    const totalDesc = totalTardanzas * 15 + totalFaltas * (3500 / 30);
 
-    const masPuntual = ranking[0];
-    const areaTopTard = [...porArea].sort((a, b) => b.Tardanzas - a.Tardanzas)[0];
-    const tardanzas = getAsistencias().filter(a => a.estado === "tardanza").length;
-    const faltas    = getAsistencias().filter(a => a.estado === "ausente").length;
-    const sueldoMedio = empleados.reduce((s, e) => s + e.sueldoBase, 0) / empleados.length;
-    const totalDesc = tardanzas * configDescuentos.montoTardanza + faltas * (sueldoMedio / 30);
-
-    return { diaria, dona, pctAsist, evolucion, ranking, porArea, descMes, masPuntual, areaTopTard, totalDesc };
-  }, [year]);
+    return { diaria, dona, pctAsist, evolucion, ranking: rankingFmt, porArea, descMes, masPuntual, areaTopTard, totalDesc };
+  }, [year, asistencias, empleados, ranking, evolucion, descMes]);
 
   return (
     <div className="space-y-6 animate-fade-in-up">

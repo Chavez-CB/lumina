@@ -1,5 +1,5 @@
 // Modulo de Configuracion del sistema
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Building2, Clock, BadgePercent, KeyRound, Palette, Save, Plus, Pencil, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -11,7 +11,7 @@ import { useTheme } from "../components/App";
 import { toast } from "sonner";
 import { configService } from "../services/configService";
 import { horarioService } from "../services/horarioService";
-import type { Horario } from "../lib/mockData";
+import type { Horario } from "../services/horarioService";
 
 const DIAS_LABELS = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"];
 
@@ -83,9 +83,11 @@ export default function Configuracion() {
   const [descuentos, setDesc]     = useState(cfg.descuentos);
   const [diasLab,   setDiasLab]   = useState<number[]>(cfg.diasLaborables);
   const [cuenta,    setCuenta]    = useState({ passwordActual: "", nuevoUsuario: "", passwordNuevo: "" });
-  const [horarios,  setHorarios]  = useState<Horario[]>(horarioService.getAll());
+  const [horarios,  setHorarios]  = useState<Horario[]>([]);
   const [openHorario, setOpenHorario] = useState(false);
   const [editandoHorario, setEditandoHorario] = useState<Horario | null>(null);
+
+  useEffect(() => { horarioService.getAll().then(setHorarios); }, []);
 
   const setE = (k: keyof typeof empresa) => (v: string) => setEmpresa(prev => ({ ...prev, [k]: v }));
   const setD = (k: keyof typeof descuentos) => (v: string) => setDesc(prev => ({ ...prev, [k]: parseFloat(v) || 0 }));
@@ -100,20 +102,20 @@ export default function Configuracion() {
 
   const handleCreateHorario = async (data: Omit<Horario, "id">) => {
     await horarioService.create(data);
-    setHorarios(horarioService.getAll());
+    horarioService.getAll().then(setHorarios);
     setOpenHorario(false);
   };
 
   const handleEditHorario = async (data: Omit<Horario, "id">) => {
     if (!editandoHorario) return;
     await horarioService.update(editandoHorario.id, data);
-    setHorarios(horarioService.getAll());
+    horarioService.getAll().then(setHorarios);
     setEditandoHorario(null);
   };
 
   const handleDeleteHorario = async (id: string) => {
     await horarioService.delete(id);
-    setHorarios(horarioService.getAll());
+    horarioService.getAll().then(setHorarios);
   };
 
   return (
