@@ -1,29 +1,34 @@
-import mysql from 'mysql2/promise';
+import pg from 'pg';
 import 'dotenv/config';
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'lumina_db',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  timezone: '+00:00',
+const { Pool } = pg;
+
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  // Cambiamos el puerto por defecto al 6543 que es el del Pooler
+  port: Number(process.env.DB_PORT) || 6543, 
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  // Forzamos el SSL con rejectUnauthorized: false directamente
+  ssl: {
+    rejectUnauthorized: false
+  },
+  max: 10,
+  idleTimeoutMillis: 30000,
+  // Aumentamos de 2000ms a 10000ms (10 segundos)
+  connectionTimeoutMillis: 10000, 
 });
 
-// Verifica la conexion al iniciar.
-pool.getConnection()
-  .then((conn) => {
-    console.log('Conectado a MySQL - lumina_db');
-    conn.release();
+// Prueba de conexión
+pool.connect()
+  .then((client) => {
+    console.log('✅ Conectado a PostgreSQL - Supabase');
+    client.release();
   })
   .catch((err) => {
-    console.error('Error de conexion a MySQL:', err.message || err.code || err);
-    if (err.code || err.errno) {
-      console.error('Detalle MySQL:', { code: err.code, errno: err.errno });
-    }
+    console.error('❌ Error de conexión a PostgreSQL:', err.message);
+    // Si sigue fallando por timeout, revisa tu conexión a internet
     process.exit(1);
   });
 

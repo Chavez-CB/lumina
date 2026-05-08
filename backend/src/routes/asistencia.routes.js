@@ -11,6 +11,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get('/', asistenciaCtrl.listarAsistencias);
 router.post('/registrar', asistenciaCtrl.registrarAsistencia);
 
+// POST /api/asistencias/registrar-facial
 // Reconocimiento facial + registro de asistencia (mañana o cualquier hora)
 router.post('/registrar-facial', upload.single('file'), asistenciaCtrl.registrarAsistenciaFacial);
 
