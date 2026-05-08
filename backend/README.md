@@ -87,11 +87,12 @@ PATCH /api/empleados/1/reactivar
 ```
 
 ### Asistencias (`/api/asistencias`)
-| Método | Ruta                         | Descripción                                     |
-|--------|------------------------------| ------------------------------------------------|
-| GET    | `/api/asistencias`           | Listar todas las asistencias registradas        |
-| POST   | `/api/asistencias/registrar` | Registrar una nueva asistencia (entrada/salida) |
-| GET    | `/api/asistencias/:id`       | Obtener el detalle de una asistencia específica |
+| Método | Ruta                                  | Descripción                                     |
+|--------|---------------------------------------| ------------------------------------------------|
+| GET    | `/api/asistencias`                    | Listar todas las asistencias registradas        |
+| POST   | `/api/asistencias/registrar`          | Registrar una nueva asistencia (entrada/salida) |
+| GET    | `/api/asistencias/:id`                | Obtener el detalle de una asistencia específica |
+|POST    | `/api/asistencias/registrar-facial`   | Registro diario                                 |  USALO PARA EL REGISTRO DIARIO 
 
 ### Estadísticas y KPIs (`/api/stats`)
 | Método | Ruta | Descripción |
@@ -152,3 +153,22 @@ PATCH /api/empleados/1/reactivar
 | PUT | `/api/admin/:id` | Editar información de un administrador |
 | PATCH | `/api/admin/:id/baja` | Dar de baja a un administrador (soft delete) |
 | PATCH | `/api/admin/:id/reactivar` | Reactivar a un administrador dado de baja |
+
+### Logs de Reconocimiento (`/api/logs/reconocimiento`)
+
+| Método | Ruta | Descripción |
+| :--- | :--- | :--- |
+| POST | `/api/logs/reconocimiento` | Registrar un nuevo evento de reconocimiento |
+| GET | `/api/logs/reconocimiento` | Listar logs con filtros y paginación |
+| GET | `/api/logs/reconocimiento/:id` | Obtener el detalle de un log específico |
+| GET | `/api/logs/reconocimiento/persona/:persona_id` | Consultar historial de logs por empleado |
+| GET | `/api/logs/reconocimiento/area/:area_id` | Consultar historial de logs por área específica |
+
+###  Reconocimiento Facial (`/api/reconocimiento`)
+
+| Método | Ruta | Descripción |
+| :--- | :--- | :--- |
+| POST | `/api/reconocimiento/generate` | Generar embedding facial a partir de una imagen (Registro) |
+| POST | `/api/reconocimiento/compare` | Comparar rostro contra la base de datos (Asistencia) |
+| POST | `/api/reconocimiento/verify` | Comparación directa entre dos vectores de embeddings |
+| GET | `/api/reconocimiento/health` | Verificar el estado de disponibilidad del motor facial |

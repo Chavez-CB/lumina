@@ -177,17 +177,30 @@ CREATE TABLE justificaciones (
 -- 8. LOG DE RECONOCIMIENTO
 -- ============================================================
 CREATE TABLE log_reconocimiento (
-  id               BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  area_id          INT UNSIGNED,
-  persona_id       INT UNSIGNED,
-  fecha_hora       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  confianza        DECIMAL(5,4),
-  resultado        ENUM('identificado','desconocido','error') NOT NULL,
-  snapshot_url     VARCHAR(500),
-  ip_dispositivo   VARCHAR(45),
-  CONSTRAINT fk_log_area FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE SET NULL,
-  CONSTRAINT fk_log_persona FOREIGN KEY (persona_id) REFERENCES personas(id) ON DELETE SET NULL
+    id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    admin_id            INT UNSIGNED NULL,
+    persona_id          INT UNSIGNED NULL, -- Más genérico que empleado_id
+    area_id             INT UNSIGNED NULL, -- Para saber en qué aula ocurrió
+    endpoint            VARCHAR(20)  NOT NULL,
+    metodo              VARCHAR(10)  NOT NULL DEFAULT 'POST',
+    exito               TINYINT(1)   NOT NULL DEFAULT 0,
+    mensaje             TEXT         NULL,
+    faces_detected      INT          NULL,
+    distancia           DECIMAL(5,4) NULL,
+    confidence          DECIMAL(5,2) NULL,
+    tiempo_respuesta_ms INT          NULL,
+    ip_address          VARCHAR(45)  NULL,
+    created_at          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- Mantener la integridad referencial
+    CONSTRAINT fk_log_admin FOREIGN KEY (admin_id) REFERENCES admin(id) ON DELETE SET NULL,
+    CONSTRAINT fk_log_persona_new FOREIGN KEY (persona_id) REFERENCES personas(id) ON DELETE SET NULL,
+    CONSTRAINT fk_log_area_new FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE SET NULL,
+
+    INDEX idx_fecha (created_at),
+    INDEX idx_endpoint (endpoint)
 ) ENGINE=InnoDB;
+
 
 -- ============================================================
 -- 9. ÍNDICES ADICIONALES
