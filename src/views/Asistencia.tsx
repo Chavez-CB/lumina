@@ -1,6 +1,9 @@
 // Módulo de Asistencia — marcación facial real via backend
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ScanFace, CheckCircle2, XCircle, Camera, CameraOff, Sparkles, Clock } from "lucide-react";
+import {
+  ScanFace, CheckCircle2, XCircle, Camera, CameraOff,
+  Sparkles, Clock, ChevronDown, Activity,
+} from "lucide-react";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
@@ -13,12 +16,26 @@ type EstadoCamara = "off" | "iniciando" | "buscando" | "reconocido" | "error";
 interface Marcacion {
   empleadoId: string;
   nombre: string;
-  foto?: string;
-  cargo?: string;
   hora: string;
   tipo: "entrada" | "salida";
-  estado: "puntual" | "tardanza";
+  confidence?: number;
 }
+
+interface Area {
+  id: string;
+  nombre: string;
+}
+
+// Áreas disponibles — en el futuro puede venir de GET /api/areas
+const AREAS_DEFAULT: Area[] = [
+  { id: "1", nombre: "Administración" },
+  { id: "2", nombre: "Tecnología" },
+  { id: "3", nombre: "Ventas" },
+  { id: "4", nombre: "Logística" },
+  { id: "5", nombre: "Recursos Humanos" },
+  { id: "6", nombre: "Finanzas" },
+  { id: "7", nombre: "Marketing" },
+];
 
 // Constantes de timing
 const SCAN_INTERVAL_MS = 2500;
@@ -27,22 +44,36 @@ const ERROR_DURATION_MS = 2000;
 const MAX_HISTORIAL_SESSION = 10;
 
 export default function Asistencia() {
-  const videoRef       = useRef<HTMLVideoElement>(null);
-  const canvasRef      = useRef<HTMLCanvasElement>(null);
-  const streamRef      = useRef<MediaStream | null>(null);
-  const scanTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRef     = useRef<HTMLVideoElement>(null);
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const streamRef    = useRef<MediaStream | null>(null);
+  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [estado, setEstado]             = useState<EstadoCamara>("off");
-  const [reconocido, setReconocido]     = useState<AttendanceResponse | null>(null);
-  const [historialSesion, setHistorial] = useState<Marcacion[]>([]);
-  const [hayCamara, setHayCamara]       = useState(true);
-  const [procesando, setProcesando]     = useState(false);
+  const [estado, setEstado]           = useState<EstadoCamara>("off");
+  const [reconocido, setReconocido]   = useState<AttendanceResponse | null>(null);
+  const [historial, setHistorial]     = useState<Marcacion[]>([]);
+  const [hayCamara, setHayCamara]     = useState(true);
+  const [procesando, setProcesando]   = useState(false);
+  const [areaId, setAreaId]           = useState<string>(AREAS_DEFAULT[0].id);
+  const [showAreaSel, setShowAreaSel] = useState(false);
+  const areaSelRef = useRef<HTMLDivElement>(null);
 
   // Activar cámara al montar
   useEffect(() => {
     iniciarCamara();
     return () => { detenerCamara(); limpiarTimer(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cerrar selector de área al hacer click fuera
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (areaSelRef.current && !areaSelRef.current.contains(e.target as Node)) {
+        setShowAreaSel(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   const limpiarTimer = () => {
@@ -56,15 +87,13 @@ export default function Asistencia() {
     const video = videoRef.current;
 
     try {
-      // Capturar foto del video
       const foto = empleadoFotoService.capturarFoto(video, 0.85);
       setProcesando(true);
 
-      // Enviar al backend
-      const ahora = Date.now();
       const respuesta = await attendanceService.register({
         frameBase64: foto.base64,
-        timestamp: ahora,
+        timestamp: Date.now(),
+        areaId,
         metadata: {
           resolution: [video.videoWidth || 640, video.videoHeight || 480],
           quality: "high",
@@ -74,28 +103,23 @@ export default function Asistencia() {
 
       empleadoFotoService.revocarPreview(foto.previewUrl);
 
-      if (respuesta.success && respuesta.employee) {
+      if (respuesta.found && respuesta.nombre) {
         const hora = new Date().toLocaleTimeString("es-PE", {
           hour: "2-digit", minute: "2-digit", second: "2-digit",
         });
-        const emp = respuesta.employee;
-        const tipo = respuesta.tipo ?? "entrada";
-        const estadoMarca = respuesta.estado ?? "puntual";
 
         setReconocido(respuesta);
         setEstado("reconocido");
         setHistorial(h => [{
-          empleadoId: emp.id,
-          nombre: emp.nombre,
-          foto: emp.foto_url,
-          cargo: emp.cargo,
+          empleadoId: String(respuesta.persona_id ?? ""),
+          nombre: respuesta.nombre!,
           hora,
-          tipo,
-          estado: estadoMarca,
+          tipo: respuesta.tipo ?? "entrada",
+          confidence: respuesta.face?.confidence,
         }, ...h].slice(0, MAX_HISTORIAL_SESSION));
 
-        toast.success(emp.nombre, {
-          description: `${tipo === "entrada" ? "Entrada" : "Salida"} registrada · ${hora}`,
+        toast.success(respuesta.nombre, {
+          description: `${respuesta.tipo === "salida" ? "Salida" : "Entrada"} registrada · ${hora}`,
         });
 
         setTimeout(() => {
@@ -120,7 +144,8 @@ export default function Asistencia() {
         agendarScan();
       }, ERROR_DURATION_MS);
     }
-  }, [procesando]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [procesando, areaId]);
 
   const agendarScan = useCallback(() => {
     limpiarTimer();
@@ -146,9 +171,7 @@ export default function Asistencia() {
         video: { width: 640, height: 480, facingMode: "user" },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      if (videoRef.current) videoRef.current.srcObject = stream;
       setHayCamara(true);
       setEstado("buscando");
     } catch {
@@ -173,11 +196,7 @@ export default function Asistencia() {
     estado === "error"      ? "border-accent shadow-accent-glow" :
     "border-border";
 
-  const nombreReconocido = reconocido?.employee?.nombre;
-  const cargoReconocido  = reconocido?.employee?.cargo;
-  const fotoReconocido   = reconocido?.employee?.foto_url;
-  const tipoMarca        = reconocido?.tipo ?? "entrada";
-  const estadoMarca      = reconocido?.estado ?? "puntual";
+  const areaNombre = AREAS_DEFAULT.find(a => a.id === areaId)?.nombre ?? "—";
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -190,10 +209,42 @@ export default function Asistencia() {
           <p className="text-sm text-muted-foreground">Posiciónate frente a la cámara para registrar tu asistencia.</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Selector de área */}
+          <div className="relative" ref={areaSelRef}>
+            <button
+              onClick={() => setShowAreaSel(s => !s)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border text-sm font-medium hover:bg-muted/40 transition-base shadow-soft"
+            >
+              <Activity className="h-4 w-4 text-primary" />
+              <span>{areaNombre}</span>
+              <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform", showAreaSel && "rotate-180")} />
+            </button>
+            {showAreaSel && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-xl shadow-elevated z-20 overflow-hidden animate-scale-in">
+                {AREAS_DEFAULT.map(a => (
+                  <button
+                    key={a.id}
+                    onClick={() => { setAreaId(a.id); setShowAreaSel(false); }}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-base",
+                      a.id === areaId && "text-primary font-semibold bg-primary-soft"
+                    )}
+                  >
+                    {a.nombre}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {estado === "off" ? (
-            <Button onClick={iniciarCamara} className="bg-gradient-primary"><Camera className="h-4 w-4 mr-2" />Activar cámara</Button>
+            <Button onClick={iniciarCamara} className="bg-gradient-primary">
+              <Camera className="h-4 w-4 mr-2" />Activar cámara
+            </Button>
           ) : (
-            <Button variant="outline" onClick={detenerCamara}><CameraOff className="h-4 w-4 mr-2" />Detener</Button>
+            <Button variant="outline" onClick={detenerCamara}>
+              <CameraOff className="h-4 w-4 mr-2" />Detener
+            </Button>
           )}
         </div>
       </div>
@@ -248,7 +299,7 @@ export default function Asistencia() {
               )}
             </div>
 
-            {/* Estado inferior */}
+            {/* Barra inferior de estado */}
             <div className="bg-card p-4 flex items-center justify-between border-t border-border">
               <div className="flex items-center gap-3">
                 <div className={cn(
@@ -263,14 +314,16 @@ export default function Asistencia() {
                   <p className="font-semibold text-sm">
                     {estado === "iniciando"  && "Iniciando cámara..."}
                     {estado === "buscando"   && (procesando ? "Procesando reconocimiento..." : "Escaneando...")}
-                    {estado === "reconocido" && (nombreReconocido ?? "Reconocido")}
+                    {estado === "reconocido" && (reconocido?.nombre ?? "Reconocido")}
                     {estado === "error"      && "Rostro no reconocido"}
                     {estado === "off"        && "Cámara apagada"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {estado === "reconocido" && cargoReconocido && `${cargoReconocido} · ${tipoMarca === "entrada" ? "Entrada" : "Salida"} ${estadoMarca}`}
-                    {estado === "buscando"   && "Mantente quieto unos segundos."}
-                    {estado === "error"      && "Intenta acercarte a la cámara."}
+                    {estado === "reconocido" && reconocido?.face && (
+                      `Confianza: ${(reconocido.face.confidence * 100).toFixed(1)}% · ${reconocido.tipo === "salida" ? "Salida" : "Entrada"}`
+                    )}
+                    {estado === "buscando" && `Área: ${areaNombre}`}
+                    {estado === "error"    && "Intenta acercarte a la cámara."}
                   </p>
                 </div>
               </div>
@@ -282,24 +335,21 @@ export default function Asistencia() {
           </div>
 
           {/* Banner de éxito */}
-          {reconocido && reconocido.success && (
+          {reconocido?.found && reconocido.nombre && (
             <div className="mt-4 rounded-2xl bg-gradient-primary p-5 text-primary-foreground shadow-glow flex items-center gap-4 animate-scale-in">
-              {fotoReconocido ? (
-                <img src={fotoReconocido} alt={nombreReconocido} className="h-14 w-14 rounded-full object-cover ring-4 ring-white/40" />
-              ) : (
-                <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center ring-4 ring-white/40">
-                  <ScanFace className="h-7 w-7" />
-                </div>
-              )}
+              <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center ring-4 ring-white/40 flex-shrink-0">
+                <ScanFace className="h-7 w-7" />
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" />
                   <p className="text-xs uppercase tracking-wider opacity-90">¡Marcación exitosa!</p>
                 </div>
-                <p className="font-bold text-lg truncate">{nombreReconocido}</p>
+                <p className="font-bold text-lg truncate">{reconocido.nombre}</p>
                 <p className="text-sm opacity-90">
-                  {tipoMarca === "entrada" ? "Entrada" : "Salida"} registrada
-                  {reconocido.timestamp && ` a las ${new Date(reconocido.timestamp).toLocaleTimeString("es-PE")}`}
+                  {reconocido.tipo === "salida" ? "Salida" : "Entrada"} registrada
+                  {reconocido.asistencia?.hora_entrada && ` · entrada: ${reconocido.asistencia.hora_entrada}`}
+                  {reconocido.face && ` · ${(reconocido.face.confidence * 100).toFixed(1)}% confianza`}
                 </p>
               </div>
             </div>
@@ -310,27 +360,26 @@ export default function Asistencia() {
         <div className="lg:col-span-2 space-y-6">
           <div className="rounded-2xl bg-card border border-border p-5 shadow-soft">
             <h3 className="font-semibold mb-1">Marcaciones recientes</h3>
-            <p className="text-xs text-muted-foreground mb-4">Esta sesión</p>
+            <p className="text-xs text-muted-foreground mb-4">Esta sesión · {areaNombre}</p>
             <div className="space-y-2">
-              {historialSesion.length === 0 ? (
+              {historial.length === 0 ? (
                 <div className="py-10 text-center text-sm text-muted-foreground">
                   <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   Aún sin marcaciones.
                 </div>
-              ) : historialSesion.map((m, i) => (
+              ) : historial.map((m, i) => (
                 <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/40 animate-fade-in-up">
-                  {m.foto ? (
-                    <img src={m.foto} alt={m.nombre} className="h-9 w-9 rounded-full object-cover" />
-                  ) : (
-                    <div className="h-9 w-9 rounded-full bg-primary-soft flex items-center justify-center">
-                      <ScanFace className="h-4 w-4 text-primary" />
-                    </div>
-                  )}
+                  <div className="h-9 w-9 rounded-full bg-primary-soft flex items-center justify-center flex-shrink-0">
+                    <ScanFace className="h-4 w-4 text-primary" />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{m.nombre}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{m.tipo} · {m.estado}</p>
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {m.tipo}
+                      {m.confidence != null && ` · ${(m.confidence * 100).toFixed(0)}%`}
+                    </p>
                   </div>
-                  <p className="text-sm font-mono">{m.hora}</p>
+                  <p className="text-sm font-mono flex-shrink-0">{m.hora}</p>
                 </div>
               ))}
             </div>

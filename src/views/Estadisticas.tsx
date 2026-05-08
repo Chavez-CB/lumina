@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis, Legend,
 } from "recharts";
 import { estadisticaService } from "../services/estadisticaService";
-import type { RankingEmpleado } from "../services/estadisticaService";
+import type { RankingEmpleado, ResumenMensual } from "../services/estadisticaService";
 import { attendanceService } from "../services/attendanceService";
 import type { Asistencia } from "../services/attendanceService";
 import { empleadoService } from "../services/empleadoService";
@@ -24,6 +24,7 @@ export default function Estadisticas() {
   const [ranking, setRanking] = useState<RankingEmpleado[]>([]);
   const [evolucion, setEvolucion] = useState<{ mes: string; asistencia: number }[]>([]);
   const [descMes, setDescMes] = useState<{ mes: string; Descuentos: number }[]>([]);
+  const [resumen, setResumen] = useState<ResumenMensual | null>(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
@@ -34,8 +35,10 @@ export default function Estadisticas() {
       estadisticaService.getRankingAsistencia(),
       estadisticaService.getEvolucionAnual(year),
       estadisticaService.getDescuentosPorMes(year),
-    ]).then(([a, e, r, ev, dm]) => {
+      estadisticaService.getResumenMensual().catch(() => null),
+    ]).then(([a, e, r, ev, dm, res]) => {
       setAsist(a); setEmpleados(e); setRanking(r); setEvolucion(ev); setDescMes(dm);
+      if (res) setResumen(res);
       setCargando(false);
     }).catch(() => setCargando(false));
   }, [year]);
@@ -60,7 +63,10 @@ export default function Estadisticas() {
       { name: "Ausente",     value: asistencias.filter(a => a.estado === "ausente").length,     color: C.accent   },
       { name: "Justificado", value: asistencias.filter(a => a.estado === "justificado").length, color: C.muted    },
     ];
-    const pctAsist = ((dona[0].value + dona[1].value) / totalMes * 100).toFixed(1);
+    // Preferir pct_asistencia del backend si está disponible
+    const pctAsist = resumen
+      ? resumen.pct_asistencia.toFixed(1)
+      : ((dona[0].value + dona[1].value) / totalMes * 100).toFixed(1);
 
     // Ranking (del backend)
     const rankingFmt = ranking.slice(0, 7).map(r => ({
@@ -79,14 +85,37 @@ export default function Estadisticas() {
       };
     });
 
-    const masPuntual    = rankingFmt[0];
-    const areaTopTard   = [...porArea].sort((a, b) => b.Tardanzas - a.Tardanzas)[0];
-    const totalTardanzas = asistencias.filter(a => a.estado === "tardanza").length;
-    const totalFaltas    = asistencias.filter(a => a.estado === "ausente").length;
-    const totalDesc = totalTardanzas * 15 + totalFaltas * (3500 / 30);
+    const masPuntual  = rankingFmt[0];
+    const areaTopTard = [...porArea].sort((a, b) => b.Tardanzas - a.Tardanzas)[0];
+    // Preferir total_descuentos_mes del backend si está disponible
+    const totalDesc = resumen
+      ? resumen.total_descuentos_mes
+      : asistencias.filter(a => a.estado === "tardanza").length * 15
+        + asistencias.filter(a => a.estado === "ausente").length * (3500 / 30);
 
     return { diaria, dona, pctAsist, evolucion, ranking: rankingFmt, porArea, descMes, masPuntual, areaTopTard, totalDesc };
-  }, [year, asistencias, empleados, ranking, evolucion, descMes]);
+  }, [year, asistencias, empleados, ranking, evolucion, descMes, resumen]);
+
+  if (cargando) {
+    return (
+      <div className="space-y-6 animate-fade-in-up">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Analisis estadistico</h2>
+          <p className="text-sm text-muted-foreground">Cargando métricas del sistema...</p>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-card border border-border p-6 h-28 animate-pulse" />
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-2 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-card border border-border h-80 animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -108,7 +137,8 @@ export default function Estadisticas() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="Asistencia general" value={`${data.pctAsist}%`} icon={Activity} variant="primary" trend={{ value: "+2.1%", positive: true }} />
+        <KpiCard title="Asistencia general" value={`${data.pctAsist}%`} icon={Activity} variant="primary"
+          trend={resumen ? { value: `${resumen.presentes_hoy} hoy`, positive: true } : undefined} />
         <KpiCard title="Más puntual" value={data.masPuntual?.nombre ?? "—"} icon={Award} variant="primary" />
         <KpiCard title="Área con más tardanzas" value={data.areaTopTard?.area ?? "—"} icon={AlertTriangle} variant="warning" />
         <KpiCard title="Descuentos del mes" value={`S/ ${Math.round(data.totalDesc).toLocaleString()}`} icon={TrendingDown} variant="accent" />

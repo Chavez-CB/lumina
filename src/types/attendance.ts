@@ -1,40 +1,66 @@
 /**
  * Types para el sistema de Asistencia Facial de empleados
  * Separado de facial.ts (que es para autenticación de admins)
+ *
+ * Shape del backend: POST /api/asistencias/registrar-facial
  */
 
-/** Payload enviado al backend para registrar asistencia */
+/** Payload que enviamos al backend (multipart/form-data) */
 export interface AttendancePayload {
   frameBase64: string
   timestamp: number
+  areaId?: string           // obligatorio para /registrar-facial, opcional en modal de login
   metadata?: {
     resolution: [number, number]
-    quality: "low" | "medium" | "high"
+    quality: string
     confidence: number
   }
 }
 
-/** Empleado reconocido (retornado por el backend al registrar asistencia) */
-export interface AttendanceEmployee {
-  id: string
-  nombre: string
-  username?: string
-  cargo?: string
-  foto_url?: string
-}
-
-/** Respuesta del backend al registrar asistencia */
+/**
+ * Respuesta del backend al registrar asistencia facial.
+ *
+ * Campos principales:
+ *   ok       — siempre presente
+ *   found    — true si se reconoció un rostro
+ *   nombre   — nombre completo si found = true
+ *   tipo     — "entrada" | "salida"
+ *   face     — métricas de la comparación facial
+ *   employee — shape legacy (FacialAttendance modal)
+ */
 export interface AttendanceResponse {
-  success: boolean
-  employee?: AttendanceEmployee
-  timestamp?: string
+  ok?: boolean
+  found?: boolean
+  persona_id?: number
+  nombre?: string
+  mensaje?: string
   tipo?: "entrada" | "salida"
+  asistencia?: {
+    id: number
+    fecha: string
+    hora_entrada?: string
+    hora_salida?: string
+    estado?: string
+    confianza_facial?: number
+  }
+  face?: {
+    distance: number
+    confidence: number
+  }
+  // Shape legacy (modal FacialAttendance / useFacialAttendance)
+  success?: boolean
+  employee?: {
+    id: string
+    nombre: string
+    username: string
+  }
+  timestamp?: string
   shift?: "mañana" | "tarde" | "noche"
-  estado?: "puntual" | "tardanza"
+  // Para errores de red / fallback
   error?: string
 }
 
-/** Estado del hook/componente de asistencia */
+/** Estado interno del hook useFacialAttendance */
 export interface AttendanceState {
   isLoading: boolean
   isRecognizing: boolean
