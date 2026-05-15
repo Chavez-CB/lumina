@@ -88,7 +88,8 @@ export const idParamRule = [
 // ── Reglas para paginación / búsqueda ──────────────────────────────────────
 export const listarEmpleadosRules = [
   query('pagina').optional().isInt({ min: 1 }).withMessage('pagina debe ser entero ≥ 1'),
-  query('limite').optional().isInt({ min: 1, max: 100 }).withMessage('limite entre 1 y 100'),
+  query('limite').optional().isInt({ min: 1, max: 500 }).withMessage('limite entre 1 y 500'),
   query('buscar').optional().trim().isLength({ max: 100 }),
-  query('activo').optional().isIn(['0', '1']).withMessage('activo debe ser 0 o 1'),
+  query('activo').optional().isIn(['0', '1', 'true', 'false']).withMessage('activo debe ser 0, 1, true o false'),
 ];
+

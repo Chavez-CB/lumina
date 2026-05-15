@@ -33,8 +33,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { route, navigate } = useRouter();
   const [open, setOpen] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
-  const [notifs, setNotifs] = useState<Notificacion[]>(() => notificacionService.getNotificaciones());
+  const [notifs, setNotifs] = useState<Notificacion[]>([]);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    notificacionService.getNotificaciones().then(setNotifs).catch(() => setNotifs([]));
+    // Refrescar notificaciones cada 5 minutos
+    const interval = setInterval(() => {
+      notificacionService.getNotificaciones().then(setNotifs).catch(() => {});
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const titulo = nav.find(n => n.to === route)?.label ?? "Sistema";
 
@@ -52,7 +61,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const handleLogout = () => { logout(); navigate("/login"); };
 
   const marcarLeidas = () => {
-    notificacionService.marcarTodasLeidas();
+    notificacionService.marcarTodasLeidas(notifs);
     setNotifs([]);
     setShowNotif(false);
   };
@@ -97,12 +106,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border">
-          <div className="rounded-xl bg-gradient-primary p-4 text-primary-foreground shadow-glow">
-            <p className="text-xs font-semibold uppercase tracking-wider opacity-90">Version Demo</p>
-            <p className="text-sm mt-1">Datos simulados para demostracion del sistema.</p>
-          </div>
-        </div>
+
       </>
     );
   }

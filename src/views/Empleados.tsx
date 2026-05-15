@@ -1,23 +1,36 @@
 // Modulo de Empleados — listado, filtros, ficha, editar, historial
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, UserPlus, Mail, Briefcase, Building2, Calendar, Camera, X, Clock, Pencil, History, Download, CameraOff, Loader2, RotateCcw, CheckCircle2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Switch } from "../components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
-import { areas, getAsistencias, getHorario } from "../lib/mockData";
-import type { Empleado } from "../lib/mockData";
 import EstadoBadge from "../components/EstadoBadge";
 import { empleadoService } from "../services/empleadoService";
+import type { Empleado } from "../services/empleadoService";
 import { horarioService } from "../services/horarioService";
+import type { Horario } from "../services/horarioService";
+import { attendanceService } from "../services/attendanceService";
+import type { Asistencia } from "../services/attendanceService";
 import { exportarCSV } from "../lib/exportUtils";
 import { useFotoCaptura } from "../hooks/useFotoCaptura";
 import { empleadoFotoService } from "../services/empleadoFotoService";
 
+// Áreas disponibles — se puede mover al backend en el futuro
+const areas = ["Ventas", "Tecnologia", "Finanzas", "Recursos Humanos", "Marketing", "Logistica", "Administracion"];
+
 // ── Vista principal ──────────────────────────────────────────────────────────
 export default function Empleados() {
-  const [lista, setLista] = useState<Empleado[]>(() => empleadoService.getAll());
+  const [lista, setLista] = useState<Empleado[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    empleadoService.getAll().then(emps => {
+      setLista(emps);
+      setCargando(false);
+    }).catch(() => setCargando(false));
+  }, []);
   const [q, setQ] = useState("");
   const [area, setArea] = useState<string>("todas");
   const [seleccionado, setSeleccionado] = useState<Empleado | null>(null);
@@ -30,20 +43,29 @@ export default function Empleados() {
     (e.nombre.toLowerCase().includes(q.toLowerCase()) || e.dni.includes(q) || e.cargo.toLowerCase().includes(q.toLowerCase()))
   );
 
-  const refresh = () => setLista(empleadoService.getAll());
+  const refresh = async () => { const emps = await empleadoService.getAll(); setLista(emps); };
 
   const handleCreate = async (data: Omit<Empleado, "id">) => {
     await empleadoService.create(data);
-    refresh();
+    await refresh();
     setOpenNuevo(false);
   };
 
   const handleEdit = async (data: Partial<Omit<Empleado, "id">>) => {
     if (!editando) return;
     await empleadoService.update(editando.id, data);
-    refresh();
+    await refresh();
     setEditando(null);
   };
+
+  if (cargando) return (
+    <div className="space-y-6 animate-fade-in-up">
+      <h2 className="text-2xl font-bold tracking-tight">Personal</h2>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {[...Array(8)].map((_, i) => <div key={i} className="rounded-2xl bg-card border border-border h-44 animate-pulse" />)}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -134,11 +156,17 @@ export default function Empleados() {
 
 // ── Ficha de empleado ────────────────────────────────────────────────────────
 function FichaEmpleado({ emp, onEditar, onHistorial }: { emp: Empleado; onEditar: () => void; onHistorial: () => void }) {
-  const empAsist = getAsistencias().filter(a => a.empleadoId === emp.id);
-  const puntuales = empAsist.filter(a => a.estado === "puntual").length;
-  const tardanzas = empAsist.filter(a => a.estado === "tardanza").length;
-  const ausentes  = empAsist.filter(a => a.estado === "ausente").length;
-  const horario   = getHorario(emp.horarioId);
+  const [asist, setAsist] = useState<Asistencia[]>([]);
+  const [horario, setHorario] = useState<Horario | undefined>();
+
+  useEffect(() => {
+    attendanceService.getAll().then(all => setAsist(all.filter(a => a.empleadoId === emp.id)));
+    if (emp.horarioId) horarioService.getById(emp.horarioId).then(setHorario);
+  }, [emp.id, emp.horarioId]);
+
+  const puntuales = asist.filter(a => a.estado === "puntual").length;
+  const tardanzas = asist.filter(a => a.estado === "tardanza").length;
+  const ausentes  = asist.filter(a => a.estado === "ausente").length;
 
   return (
     <div className="space-y-5">
@@ -183,8 +211,12 @@ function FichaEmpleado({ emp, onEditar, onHistorial }: { emp: Empleado; onEditar
 
 // ── Historial del empleado ───────────────────────────────────────────────────
 function HistorialEmpleado({ emp }: { emp: Empleado }) {
-  const asist = [...getAsistencias().filter(a => a.empleadoId === emp.id)]
-    .sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const [asist, setAsist] = useState<Asistencia[]>([]);
+
+  useEffect(() => {
+    attendanceService.getAll()
+      .then(all => setAsist([...all.filter(a => a.empleadoId === emp.id)].sort((a, b) => b.fecha.localeCompare(a.fecha))));
+  }, [emp.id]);
 
   const puntual  = asist.filter(a => a.estado === "puntual").length;
   const tardanza = asist.filter(a => a.estado === "tardanza").length;
@@ -244,7 +276,8 @@ function HistorialEmpleado({ emp }: { emp: Empleado }) {
 
 // ── Formulario editar ────────────────────────────────────────────────────────
 function FormularioEditar({ emp, onSave, onClose }: { emp: Empleado; onSave: (d: Partial<Omit<Empleado,"id">>) => void; onClose: () => void }) {
-  const horarios = horarioService.getAll();
+  const [horarios, setHorarios] = useState<Horario[]>([]);
+  useEffect(() => { horarioService.getAll().then(setHorarios); }, []);
   const [nombre, setNombre]   = useState(emp.nombre);
   const [cargo, setCargo]     = useState(emp.cargo);
   const [area, setArea]       = useState(emp.area);
@@ -297,7 +330,8 @@ function FormularioEditar({ emp, onSave, onClose }: { emp: Empleado; onSave: (d:
 
 // ── Formulario nuevo ─────────────────────────────────────────────────────────
 function FormularioNuevo({ onSave, onClose }: { onSave: (d: Omit<Empleado,"id">) => void; onClose: () => void }) {
-  const horarios = horarioService.getAll();
+  const [horarios, setHorarios] = useState<Horario[]>([]);
+  useEffect(() => { horarioService.getAll().then(setHorarios); }, []);
   const { state: fotoState, videoRef, activarCamara, capturarFoto, reiniciar } = useFotoCaptura();
   const [subiendo, setSubiendo] = useState(false);
 

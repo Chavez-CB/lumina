@@ -23,11 +23,11 @@ const pool = new Pool({
 // Prueba de conexión
 pool.connect()
   .then((client) => {
-    console.log('✅ Conectado a PostgreSQL - Supabase');
+    console.log('Conectado a PostgreSQL - Supabase');
     client.release();
   })
   .catch((err) => {
-    console.error('❌ Error de conexión a PostgreSQL:', err.message);
+    console.error('Error de conexión a PostgreSQL:', err.message);
     // Si sigue fallando por timeout, revisa tu conexión a internet
     process.exit(1);
   });

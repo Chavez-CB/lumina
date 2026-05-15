@@ -7,52 +7,62 @@ const httpError = (status, message) => {
   return err;
 };
 
-// Listar (paginado + filtros)
+// ── GET /api/admin ─────────────────────────────────────────────────────────
 export const listarAdmins = async (req, res, next) => {
   try {
     const pagina = Math.max(1, parseInt(req.query.pagina) || 1);
     const limite = Math.min(100, Math.max(1, parseInt(req.query.limite) || 20));
     const offset = (pagina - 1) * limite;
     const buscar = req.query.buscar?.trim() || null;
-    const activo = req.query.activo !== undefined ? parseInt(req.query.activo) : null;
+    const activo = req.query.activo !== undefined
+      ? (req.query.activo === 'true' || req.query.activo === '1')
+      : null;
 
-    let where = 'WHERE 1=1';
+    const conditions = ['1=1'];
     const params = [];
+    let idx = 1;
 
     if (buscar) {
-      where += ` AND (nombre LIKE ? OR apellido LIKE ? OR email LIKE ?)`;
+      conditions.push(`(nombre ILIKE $${idx} OR apellido ILIKE $${idx + 1} OR email ILIKE $${idx + 2})`);
       const like = `%${buscar}%`;
       params.push(like, like, like);
+      idx += 3;
     }
     if (activo !== null) {
-      where += ' AND activo = ?';
+      conditions.push(`activo = $${idx}`);
       params.push(activo);
+      idx++;
     }
 
-    const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM admin ${where}`, params);
+    const where = `WHERE ${conditions.join(' AND ')}`;
 
-    const [admins] = await pool.query(
+    const { rows: [{ total }] } = await pool.query(
+      `SELECT COUNT(*) AS total FROM admin ${where}`,
+      params
+    );
+
+    const { rows: admins } = await pool.query(
       `SELECT id, nombre, apellido, email, activo, ultimo_acceso, created_at, updated_at 
        FROM admin ${where} 
        ORDER BY apellido ASC, nombre ASC 
-       LIMIT ? OFFSET ?`,
+       LIMIT $${idx} OFFSET $${idx + 1}`,
       [...params, limite, offset]
     );
 
     res.json({
       ok: true,
       data: admins,
-      meta: { total, pagina, limite, paginas: Math.ceil(total / limite) }
+      meta: { total: parseInt(total), pagina, limite, paginas: Math.ceil(total / limite) }
     });
   } catch (err) { next(err); }
 };
 
-// Obtener uno
+// ── GET /api/admin/:id ─────────────────────────────────────────────────────
 export const obtenerAdmin = async (req, res, next) => {
   try {
-    const [rows] = await pool.query(
+    const { rows } = await pool.query(
       `SELECT id, nombre, apellido, email, activo, ultimo_acceso, created_at, updated_at 
-       FROM admin WHERE id = ?`,
+       FROM admin WHERE id = $1`,
       [req.params.id]
     );
 
@@ -61,27 +71,24 @@ export const obtenerAdmin = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// Crear
+// ── POST /api/admin ────────────────────────────────────────────────────────
 export const crearAdmin = async (req, res, next) => {
   try {
     const { nombre, apellido, email, password } = req.body;
 
-    // Verificar duplicados
-    const [[existe]] = await pool.query('SELECT id FROM admin WHERE email = ?', [email]);
+    const { rows: [existe] } = await pool.query(
+      'SELECT id FROM admin WHERE email = $1',
+      [email]
+    );
     if (existe) throw httpError(409, 'Ya existe un administrador con ese email');
 
-    const salt = await bcrypt.genSalt(10);
-    const password_hash = await bcrypt.hash(password, salt);
+    const password_hash = await bcrypt.hash(password, 10);
 
-    const [result] = await pool.query(
+    const { rows: [nuevo] } = await pool.query(
       `INSERT INTO admin (nombre, apellido, email, password_hash) 
-       VALUES (?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, nombre, apellido, email, activo, created_at`,
       [nombre, apellido, email, password_hash]
-    );
-
-    const [[nuevo]] = await pool.query(
-      'SELECT id, nombre, apellido, email, activo, created_at FROM admin WHERE id = ?',
-      [result.insertId]
     );
 
     res.status(201).json({
@@ -92,72 +99,84 @@ export const crearAdmin = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// Editar
+// ── PUT /api/admin/:id ─────────────────────────────────────────────────────
 export const editarAdmin = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { nombre, apellido, email, password, activo } = req.body;
 
-    const [[existe]] = await pool.query('SELECT id FROM admin WHERE id = ?', [id]);
+    const { rows: [existe] } = await pool.query(
+      'SELECT id FROM admin WHERE id = $1',
+      [id]
+    );
     if (!existe) throw httpError(404, 'Admin no encontrado');
 
-    // Verificar email duplicado (excluyendo él mismo)
     if (email) {
-      const [[dup]] = await pool.query('SELECT id FROM admin WHERE email = ? AND id != ?', [email, id]);
+      const { rows: [dup] } = await pool.query(
+        'SELECT id FROM admin WHERE email = $1 AND id != $2',
+        [email, id]
+      );
       if (dup) throw httpError(409, 'El email ya está en uso');
     }
 
-    let query = 'UPDATE admin SET ';
-    const updates = [];
+    const setClauses = [];
     const values = [];
+    let idx = 1;
 
-    if (nombre !== undefined) { updates.push('nombre = ?'); values.push(nombre); }
-    if (apellido !== undefined) { updates.push('apellido = ?'); values.push(apellido); }
-    if (email !== undefined) { updates.push('email = ?'); values.push(email); }
-    if (activo !== undefined) { updates.push('activo = ?'); values.push(activo); }
+    if (nombre !== undefined)   { setClauses.push(`nombre = $${idx}`);   values.push(nombre);   idx++; }
+    if (apellido !== undefined) { setClauses.push(`apellido = $${idx}`); values.push(apellido); idx++; }
+    if (email !== undefined)    { setClauses.push(`email = $${idx}`);    values.push(email);    idx++; }
+    if (activo !== undefined)   { setClauses.push(`activo = $${idx}`);   values.push(activo === true || activo === 'true' || activo === 1); idx++; }
     if (password) {
-      const salt = await bcrypt.genSalt(10);
-      const hash = await bcrypt.hash(password, salt);
-      updates.push('password_hash = ?');
+      const hash = await bcrypt.hash(password, 10);
+      setClauses.push(`password_hash = $${idx}`);
       values.push(hash);
+      idx++;
     }
 
-    if (!updates.length) return res.status(422).json({ ok: false, message: 'No hay campos para actualizar' });
+    if (!setClauses.length) {
+      return res.status(422).json({ ok: false, message: 'No hay campos para actualizar' });
+    }
 
     values.push(id);
-    await pool.query(query + updates.join(', ') + ' WHERE id = ?', values);
-
-    const [[actualizado]] = await pool.query(
-      'SELECT id, nombre, apellido, email, activo, ultimo_acceso, updated_at FROM admin WHERE id = ?',
-      [id]
+    const { rows: [actualizado] } = await pool.query(
+      `UPDATE admin SET ${setClauses.join(', ')} WHERE id = $${idx}
+       RETURNING id, nombre, apellido, email, activo, ultimo_acceso, updated_at`,
+      values
     );
 
     res.json({ ok: true, message: 'Admin actualizado', data: actualizado });
   } catch (err) { next(err); }
 };
 
-// Baja lógica
+// ── PATCH /api/admin/:id/baja ──────────────────────────────────────────────
 export const darDeBajaAdmin = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const [[admin]] = await pool.query('SELECT activo FROM admin WHERE id = ?', [id]);
+    const { rows: [admin] } = await pool.query(
+      'SELECT activo FROM admin WHERE id = $1',
+      [id]
+    );
     if (!admin) throw httpError(404, 'Admin no encontrado');
     if (!admin.activo) throw httpError(409, 'Ya está dado de baja');
 
-    await pool.query('UPDATE admin SET activo = 0 WHERE id = ?', [id]);
+    await pool.query('UPDATE admin SET activo = FALSE WHERE id = $1', [id]);
     res.json({ ok: true, message: 'Administrador dado de baja' });
   } catch (err) { next(err); }
 };
 
-// Reactivar
+// ── PATCH /api/admin/:id/reactivar ────────────────────────────────────────
 export const reactivarAdmin = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const [[admin]] = await pool.query('SELECT activo FROM admin WHERE id = ?', [id]);
+    const { rows: [admin] } = await pool.query(
+      'SELECT activo FROM admin WHERE id = $1',
+      [id]
+    );
     if (!admin) throw httpError(404, 'Admin no encontrado');
     if (admin.activo) throw httpError(409, 'Ya está activo');
 
-    await pool.query('UPDATE admin SET activo = 1 WHERE id = ?', [id]);
+    await pool.query('UPDATE admin SET activo = TRUE WHERE id = $1', [id]);
     res.json({ ok: true, message: 'Administrador reactivado' });
   } catch (err) { next(err); }
 };

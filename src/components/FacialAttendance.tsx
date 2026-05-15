@@ -106,7 +106,8 @@ export default function FacialAttendance({ onClose }: FacialAttendanceProps) {
                     <p className="font-bold text-sm">{formatTime(state.result.timestamp)}</p>
                   </div>
                   {state.result.shift && (() => {
-                    const { label, Icon, color } = SHIFT_INFO[state.result!.shift!]
+                    const shiftKey = state.result!.shift as keyof typeof SHIFT_INFO
+                    const { label, Icon, color } = SHIFT_INFO[shiftKey]
                     return (
                       <div className="rounded-lg bg-background p-2.5 border border-border">
                         <div className={cn("flex items-center gap-1.5 mb-1", color)}>

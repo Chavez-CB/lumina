@@ -1,5 +1,5 @@
 // Modulo de Impuestos — gestion y calculo de nomina neta
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Receipt, Pencil, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -7,9 +7,13 @@ import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { empleados, getAsistencias, configDescuentos } from "../lib/mockData";
+import { configDescuentos } from "../lib/mockData";
 import type { Impuesto } from "../lib/mockData";
 import { impuestoService } from "../services/impuestoService";
+import { empleadoService } from "../services/empleadoService";
+import type { Empleado } from "../services/empleadoService";
+import { attendanceService } from "../services/attendanceService";
+import type { Asistencia } from "../services/attendanceService";
 
 // ── Formulario compartido (crear y editar) ──────────────────────────────────
 interface FormData {
@@ -115,15 +119,29 @@ function FormularioImpuesto({
 
 // ── Vista principal ──────────────────────────────────────────────────────────
 export default function Impuestos() {
-  const [imps, setImps]       = useState<Impuesto[]>(impuestoService.getAll());
-  const [empleadoId, setEmpleadoId] = useState(empleados[0].id);
+  const [imps, setImps]             = useState<Impuesto[]>(impuestoService.getAll());
+  const [empleados, setEmpleados]   = useState<Empleado[]>([]);
+  const [asistencias, setAsistencias] = useState<Asistencia[]>([]);
+  const [empleadoId, setEmpleadoId] = useState<string>("");
   const [openNuevo, setOpenNuevo]   = useState(false);
   const [editando, setEditando]     = useState<Impuesto | null>(null);
 
-  const empleado = empleados.find(e => e.id === empleadoId)!;
+  useEffect(() => {
+    Promise.all([
+      empleadoService.getAll({ activo: true }),
+      attendanceService.getAll({ limite: 2000 }),
+    ]).then(([e, a]) => {
+      setEmpleados(e);
+      setAsistencias(a);
+      if (e.length > 0) setEmpleadoId(e[0].id);
+    }).catch(console.error);
+  }, []);
+
+  const empleado = empleados.find(e => e.id === empleadoId);
 
   const calculo = useMemo(() => {
-    const asist = getAsistencias().filter(a => a.empleadoId === empleadoId);
+    if (!empleado) return null;
+    const asist = asistencias.filter(a => a.empleadoId === empleadoId);
     const tardanzas  = asist.filter(a => a.estado === "tardanza").length;
     const faltas     = asist.filter(a => a.estado === "ausente").length;
     const sueldoDiario = empleado.sueldoBase / 30;
@@ -138,7 +156,7 @@ export default function Impuestos() {
     const neto     = subtotal - totalImp;
 
     return { tardanzas, faltas, descTard, descFalta, subtotal, aplicados, totalImp, neto };
-  }, [empleado, empleadoId, imps]);
+  }, [empleado, empleadoId, imps, asistencias]);
 
   const handleToggle = async (id: string) => {
     await impuestoService.toggleActivo(id);
@@ -226,6 +244,9 @@ export default function Impuestos() {
           </div>
 
           <div className="space-y-2 pt-3 border-t border-border text-sm">
+            {(!empleado || !calculo) ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Cargando datos...</p>
+            ) : (<>
             <Linea label="Sueldo bruto" value={`S/ ${empleado.sueldoBase.toLocaleString()}`} />
             <Linea label={`Tardanzas (${calculo.tardanzas})`} value={`- S/ ${calculo.descTard.toLocaleString()}`} negative />
             <Linea label={`Faltas (${calculo.faltas})`} value={`- S/ ${calculo.descFalta.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} negative />
@@ -241,6 +262,7 @@ export default function Impuestos() {
                 <p className="text-3xl font-bold mt-1">S/ {calculo.neto.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
               </div>
             </div>
+            </>)}
           </div>
         </div>
       </div>

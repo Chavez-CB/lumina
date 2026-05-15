@@ -1,24 +1,20 @@
 /**
  * HTTP Client — Abstracción fetch
- * 
- * Centraliza toda comunicación HTTP con backend
- * HOY: sin backend (mock en facialService)
- * FUTURO: conecta con API real
- * 
- * Cambio único cuando backend esté listo:
- * - Cambiar baseURL en env
- * - Descomentar líneas POST/GET en facialService.ts
- * - Listo
- * 
+ *
+ * Centraliza toda comunicación HTTP con backend.
+ * Desenvuelve automáticamente la envoltura { ok, data, message } del backend.
+ *
  * Uso:
  *   import { httpClient } from "@/lib/api/client"
- *   const res = await httpClient.post<FacialAuthResponse>('/auth/facial', payload)
+ *   const empleados = await httpClient.get<Empleado[]>('/empleados')
  */
 
+import type { ApiResponse } from "@/types/api"
+
 interface RequestOptions {
-  timeout?: number                       // Milisegundos antes de cancelar
+  timeout?: number
   headers?: Record<string, string>
-  retries?: number                       // Cuántas veces reintentar
+  retries?: number
 }
 
 interface HttpError extends Error {
@@ -33,17 +29,12 @@ export class HttpClient {
     this.baseURL = baseURL
   }
 
-  /**
-   * POST — Enviar datos
-   * 
-   * Ej: enviar frame facial → backend valida → retorna user+token
-   * 
-   * @template T - Tipo de respuesta esperada
-   * @param path - Ruta relativa ej: '/auth/facial'
-   * @param body - Datos a enviar (serializados a JSON)
-   * @param options - timeout, headers, reintentos
-   * @returns Promise con respuesta tipada
-   */
+  /** GET — obtener datos */
+  async get<T>(path: string, options?: RequestOptions): Promise<T> {
+    return this.request<T>(path, { method: "GET", ...options })
+  }
+
+  /** POST — enviar datos JSON */
   async post<T>(path: string, body: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>(path, {
       method: "POST",
@@ -52,34 +43,7 @@ export class HttpClient {
     })
   }
 
-  /**
-   * GET — Obtener datos
-   * 
-   * Ej: obtener perfil usuario loggeado
-   * 
-   * @template T - Tipo de respuesta esperada
-   * @param path - Ruta relativa ej: '/users/me'
-   * @param options - timeout, headers, reintentos
-   * @returns Promise con respuesta tipada
-   */
-  async get<T>(path: string, options?: RequestOptions): Promise<T> {
-    return this.request<T>(path, {
-      method: "GET",
-      ...options,
-    })
-  }
-
-  /**
-   * PUT — Actualizar datos
-   * 
-   * Ej: cambiar contraseña, actualizar perfil
-   * 
-   * @template T - Tipo de respuesta esperada
-   * @param path - Ruta relativa
-   * @param body - Datos nuevos
-   * @param options - timeout, headers, reintentos
-   * @returns Promise con respuesta tipada
-   */
+  /** PUT — actualizar datos JSON */
   async put<T>(path: string, body: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>(path, {
       method: "PUT",
@@ -88,57 +52,71 @@ export class HttpClient {
     })
   }
 
-  /**
-   * DELETE — Borrar datos
-   * 
-   * Ej: logout (borrar sesión)
-   * 
-   * @template T - Tipo de respuesta esperada
-   * @param path - Ruta relativa
-   * @param options - timeout, headers, reintentos
-   * @returns Promise con respuesta tipada
-   */
-  async delete<T>(path: string, options?: RequestOptions): Promise<T> {
+  /** PATCH — actualización parcial */
+  async patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>(path, {
-      method: "DELETE",
+      method: "PATCH",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
       ...options,
     })
   }
 
+  /** DELETE — eliminar recurso */
+  async delete<T>(path: string, options?: RequestOptions): Promise<T> {
+    return this.request<T>(path, { method: "DELETE", ...options })
+  }
+
   /**
-   * REQUEST — Método privado (lógica común)
-   * 
-   * Centraliza:
-   * - Construcción URL
-   * - Headers por defecto
-   * - Timeout con AbortController
-   * - Error handling
-   * - Reintentos automáticos
-   * 
-   * @template T - Tipo de respuesta
-   * @param path - Ruta relativa
-   * @param options - Opciones de fetch + custom options
-   * @returns Promise con respuesta tipada
+   * POST multipart/form-data — para subida de archivos (fotos faciales).
+   * NO poner Content-Type manualmente; el navegador lo agrega con el boundary.
    */
+  async postForm<T>(path: string, form: FormData, options?: RequestOptions): Promise<T> {
+    const { timeout = 15000, retries = 0, headers = {} } = options ?? {}
+    const url = `${this.baseURL}${path}`
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+        const response = await fetch(url, {
+          method: "POST",
+          body: form,
+          headers, // sin Content-Type para que el browser ponga el boundary
+          signal: controller.signal,
+        })
+
+        clearTimeout(timeoutId)
+        return await this.handleResponse<T>(response)
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        if (attempt === retries) throw lastError
+        await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)))
+      }
+    }
+
+    throw lastError || new Error("Unknown error")
+  }
+
+  // ── Privado ────────────────────────────────────────────────────────────────
+
   private async request<T>(
     path: string,
-    options: RequestInit & RequestOptions
+    options: Omit<RequestInit, "headers"> & RequestOptions
   ): Promise<T> {
     const { timeout = 10000, retries = 0, headers = {}, ...fetchOptions } = options
     const url = `${this.baseURL}${path}`
 
-    // Headers por defecto
-    const defaultHeaders = {
+    const defaultHeaders: Record<string, string> = {
       "Content-Type": "application/json",
       ...headers,
     }
 
     let lastError: Error | null = null
 
-    // Reintentar si falla (útil para conexiones inestables)
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        // AbortController = forma de cancelar fetch si pasa timeout
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), timeout)
 
@@ -149,42 +127,54 @@ export class HttpClient {
         })
 
         clearTimeout(timeoutId)
-
-        // Si status != 2xx (200-299)
-        if (!response.ok) {
-          const body = await response.json().catch(() => null)
-          const error = Object.assign(new Error(`HTTP ${response.status}`), {
-            status: response.status,
-            body,
-          }) as HttpError
-          throw error
-        }
-
-        // Parsear respuesta
-        const data: T = await response.json()
-        return data
+        return await this.handleResponse<T>(response)
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
-
-        // Si es el último intento, lanzar error
-        if (attempt === retries) {
-          throw lastError
-        }
-
-        // Si no, esperar antes de reintentar (backoff: 100ms, 200ms, 300ms)
+        if (attempt === retries) throw lastError
         await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)))
       }
     }
 
     throw lastError || new Error("Unknown error")
   }
+
+  /**
+   * Maneja la respuesta HTTP.
+   * El backend usa la envoltura { ok, data, message }.
+   * Si ok=true → devuelve data. Si ok=false → lanza error con message.
+   * Si la respuesta no tiene la envoltura (ej. 204 No Content) → retorna undefined.
+   */
+  private async handleResponse<T>(response: Response): Promise<T> {
+    // 204 No Content — sin body
+    if (response.status === 204) return undefined as T
+
+    const json = await response.json().catch(() => null)
+
+    // Respuesta estándar del backend Lumina: { ok, data, message }
+    if (json !== null && typeof json === "object" && "ok" in json) {
+      const wrapped = json as ApiResponse<T>
+      if (wrapped.ok) {
+        return wrapped.data
+      }
+      const error = Object.assign(
+        new Error(wrapped.message || `HTTP ${response.status}`),
+        { status: response.status, body: json }
+      ) as HttpError
+      throw error
+    }
+
+    // Respuesta sin envoltura (ej. backend devuelve directamente el objeto)
+    if (!response.ok) {
+      const error = Object.assign(
+        new Error(`HTTP ${response.status}`),
+        { status: response.status, body: json }
+      ) as HttpError
+      throw error
+    }
+
+    return json as T
+  }
 }
 
-/**
- * Singleton exportado
- * 
- * Importar en toda la app con:
- *   import { httpClient } from "@/lib/api/client"
- *   const response = await httpClient.post('/auth/facial', payload)
- */
+/** Singleton exportado */
 export const httpClient = new HttpClient()

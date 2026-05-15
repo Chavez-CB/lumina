@@ -1,74 +1,121 @@
 // Modulo de Estadisticas — analisis visual completo
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Award, TrendingDown, AlertTriangle, Activity, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis, Legend,
 } from "recharts";
-import { empleados, getAsistencias, areas, configDescuentos } from "../lib/mockData";
 import { estadisticaService } from "../services/estadisticaService";
+import type { RankingEmpleado, ResumenMensual } from "../services/estadisticaService";
+import { attendanceService } from "../services/attendanceService";
+import type { Asistencia } from "../services/attendanceService";
+import { empleadoService } from "../services/empleadoService";
+import type { Empleado } from "../services/empleadoService";
 import KpiCard from "../components/KpiCard";
+
+const AREAS = ["Ventas", "Tecnologia", "Finanzas", "Recursos Humanos", "Marketing", "Logistica", "Administracion"];
 
 const C = { primary: "hsl(162 65% 42%)", accent: "hsl(345 65% 42%)", warning: "hsl(38 92% 50%)", muted: "hsl(215 14% 65%)" };
 
 export default function Estadisticas() {
   const [year, setYear] = useState(new Date().getFullYear());
+  const [asistencias, setAsist] = useState<Asistencia[]>([]);
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [ranking, setRanking] = useState<RankingEmpleado[]>([]);
+  const [evolucion, setEvolucion] = useState<{ mes: string; asistencia: number }[]>([]);
+  const [descMes, setDescMes] = useState<{ mes: string; Descuentos: number }[]>([]);
+  const [resumen, setResumen] = useState<ResumenMensual | null>(null);
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    setCargando(true);
+    Promise.all([
+      attendanceService.getAll({ limite: 2000 }),
+      empleadoService.getAll({ activo: true }),
+      estadisticaService.getRankingAsistencia(),
+      estadisticaService.getEvolucionAnual(year),
+      estadisticaService.getDescuentosPorMes(year),
+      estadisticaService.getResumenMensual().catch(() => null),
+    ]).then(([a, e, r, ev, dm, res]) => {
+      setAsist(a); setEmpleados(e); setRanking(r); setEvolucion(ev); setDescMes(dm);
+      if (res) setResumen(res);
+      setCargando(false);
+    }).catch(() => setCargando(false));
+  }, [year]);
 
   const data = useMemo(() => {
     // Asistencia diaria 30 dias
     const diaria = Array.from({ length: 30 }).map((_, i) => {
       const f = (() => { const d = new Date(); d.setDate(d.getDate() - (29 - i)); return d.toISOString().slice(0, 10); })();
-      const d = getAsistencias().filter(a => a.fecha === f);
+      const d = asistencias.filter(a => a.fecha === f);
       return {
-        d: new Date(f).getDate().toString(),
+        d: new Date(f + "T12:00:00").getDate().toString(),
         Asistencias: d.filter(a => a.estado !== "ausente").length,
         Faltas: d.filter(a => a.estado === "ausente").length,
       };
     });
 
     // Dona puntualidad mes
-    const totalMes = getAsistencias().length || 1;
+    const totalMes = asistencias.length || 1;
     const dona = [
-      { name: "Puntual",     value: getAsistencias().filter(a => a.estado === "puntual").length,     color: C.primary  },
-      { name: "Tardanza",    value: getAsistencias().filter(a => a.estado === "tardanza").length,    color: C.warning  },
-      { name: "Ausente",     value: getAsistencias().filter(a => a.estado === "ausente").length,     color: C.accent   },
-      { name: "Justificado", value: getAsistencias().filter(a => a.estado === "justificado").length, color: C.muted    },
+      { name: "Puntual",     value: asistencias.filter(a => a.estado === "puntual").length,     color: C.primary  },
+      { name: "Tardanza",    value: asistencias.filter(a => a.estado === "tardanza").length,    color: C.warning  },
+      { name: "Ausente",     value: asistencias.filter(a => a.estado === "ausente").length,     color: C.accent   },
+      { name: "Justificado", value: asistencias.filter(a => a.estado === "justificado").length, color: C.muted    },
     ];
-    const pctAsist = ((dona[0].value + dona[1].value) / totalMes * 100).toFixed(1);
+    // Preferir pct_asistencia del backend si está disponible
+    const pctAsist = resumen
+      ? resumen.pct_asistencia.toFixed(1)
+      : ((dona[0].value + dona[1].value) / totalMes * 100).toFixed(1);
 
-    // Evolucion anual — datos reales del mes actual, seeded para historicos
-    const evolucion = estadisticaService.getEvolucionAnual(year);
+    // Ranking (del backend)
+    const rankingFmt = ranking.slice(0, 7).map(r => ({
+      nombre: r.nombre.split(" ").slice(0, 2).join(" "),
+      puntuales: r.puntuales,
+    }));
 
-    // Ranking puntuales
-    const ranking = empleados.map(e => {
-      const a = getAsistencias().filter(x => x.empleadoId === e.id);
-      const p = a.filter(x => x.estado === "puntual").length;
-      return { nombre: e.nombre.split(" ")[0] + " " + (e.nombre.split(" ")[1] ?? ""), puntuales: p };
-    }).sort((a, b) => b.puntuales - a.puntuales).slice(0, 7);
-
-    // Tardanzas por area
-    const porArea = areas.map(ar => {
-      const empAr = empleados.filter(e => e.area === ar).map(e => e.id);
-      const aAr = getAsistencias().filter(a => empAr.includes(a.empleadoId));
+    // Tardanzas por area usando empleados del backend
+    const porArea = AREAS.map(ar => {
+      const empIds = empleados.filter(e => e.area === ar).map(e => e.id);
+      const aAr = asistencias.filter(a => empIds.includes(a.empleadoId));
       return {
         area: ar.length > 12 ? ar.slice(0, 11) + "..." : ar,
         Tardanzas: aAr.filter(a => a.estado === "tardanza").length,
-        Faltas: aAr.filter(a => a.estado === "ausente").length,
+        Faltas:    aAr.filter(a => a.estado === "ausente").length,
       };
     });
 
-    // Descuentos por mes — datos reales del mes actual, seeded para historicos
-    const descMes = estadisticaService.getDescuentosPorMes(year);
-
-    const masPuntual = ranking[0];
+    const masPuntual  = rankingFmt[0];
     const areaTopTard = [...porArea].sort((a, b) => b.Tardanzas - a.Tardanzas)[0];
-    const tardanzas = getAsistencias().filter(a => a.estado === "tardanza").length;
-    const faltas    = getAsistencias().filter(a => a.estado === "ausente").length;
-    const sueldoMedio = empleados.reduce((s, e) => s + e.sueldoBase, 0) / empleados.length;
-    const totalDesc = tardanzas * configDescuentos.montoTardanza + faltas * (sueldoMedio / 30);
+    // Preferir total_descuentos_mes del backend si está disponible
+    const totalDesc = resumen
+      ? resumen.total_descuentos_mes
+      : asistencias.filter(a => a.estado === "tardanza").length * 15
+        + asistencias.filter(a => a.estado === "ausente").length * (3500 / 30);
 
-    return { diaria, dona, pctAsist, evolucion, ranking, porArea, descMes, masPuntual, areaTopTard, totalDesc };
-  }, [year]);
+    return { diaria, dona, pctAsist, evolucion, ranking: rankingFmt, porArea, descMes, masPuntual, areaTopTard, totalDesc };
+  }, [year, asistencias, empleados, ranking, evolucion, descMes, resumen]);
+
+  if (cargando) {
+    return (
+      <div className="space-y-6 animate-fade-in-up">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Analisis estadistico</h2>
+          <p className="text-sm text-muted-foreground">Cargando métricas del sistema...</p>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-card border border-border p-6 h-28 animate-pulse" />
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-2 gap-6">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="rounded-2xl bg-card border border-border h-80 animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -90,7 +137,8 @@ export default function Estadisticas() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="Asistencia general" value={`${data.pctAsist}%`} icon={Activity} variant="primary" trend={{ value: "+2.1%", positive: true }} />
+        <KpiCard title="Asistencia general" value={`${data.pctAsist}%`} icon={Activity} variant="primary"
+          trend={resumen ? { value: `${resumen.presentes_hoy} hoy`, positive: true } : undefined} />
         <KpiCard title="Más puntual" value={data.masPuntual?.nombre ?? "—"} icon={Award} variant="primary" />
         <KpiCard title="Área con más tardanzas" value={data.areaTopTard?.area ?? "—"} icon={AlertTriangle} variant="warning" />
         <KpiCard title="Descuentos del mes" value={`S/ ${Math.round(data.totalDesc).toLocaleString()}`} icon={TrendingDown} variant="accent" />
