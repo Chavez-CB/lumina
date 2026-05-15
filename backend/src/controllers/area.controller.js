@@ -89,6 +89,9 @@ export const eliminarArea = async (req, res, next) => {
     const enUso = await pool.query("SELECT id FROM asistencias WHERE area_id = $1 LIMIT 1", [id]);
     if (enUso.rows.length > 0) throw httpError(409, 'No se puede eliminar el área porque ya tiene asistencias registradas');
 
+    const horariosEnUso = await pool.query("SELECT id FROM horarios WHERE area_id = $1 LIMIT 1", [id]);
+    if (horariosEnUso.rows.length > 0) throw httpError(409, 'No se puede eliminar el área porque tiene horarios asociados');
+
     const result = await pool.query("DELETE FROM areas WHERE id = $1", [id]);
     
     if (result.rowCount === 0) throw httpError(404, 'Área no encontrada');
