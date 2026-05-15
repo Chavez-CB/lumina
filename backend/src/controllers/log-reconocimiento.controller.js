@@ -24,7 +24,9 @@ export const registrarLog = async (req, res, next) => {
       [
         admin_id || null, persona_id || null, area_id || null,
         endpoint || 'unknown', metodo, exito, mensaje || null,
-        faces_detected || null, distancia || null, confidence || null,
+        faces_detected || null, 
+        distancia != null ? parseFloat(Number(distancia).toFixed(4)) : null, 
+        confidence != null ? parseFloat(Number(confidence).toFixed(4)) : null,
         tiempo_respuesta_ms || null, ip_address || null
       ]
     );

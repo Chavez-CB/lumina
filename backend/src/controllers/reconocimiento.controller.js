@@ -25,7 +25,7 @@ export const compararRostro = async (req, res, next) => {
   try {
     if (!req.file) throw new Error('No se envió imagen');
 
-    const { area_id, threshold = 0.55 } = req.body;
+    const { area_id, threshold = 0.45 } = req.body;
 
     // Obtener candidatos
     const { rows: personas } = await pool.query(`
@@ -51,8 +51,8 @@ export const compararRostro = async (req, res, next) => {
       ...logData,
       area_id: area_id || null,
       faces_detected: faceResult.faces_detected || 1,
-      distancia: faceResult.distance,
-      confidence: faceResult.confidence,
+      distancia: faceResult.distance != null ? parseFloat(Number(faceResult.distance).toFixed(4)) : null,
+      confidence: faceResult.confidence != null ? parseFloat(Number(faceResult.confidence).toFixed(4)) : null,
       tiempo_respuesta_ms,
       exito: !!faceResult.found,
       mensaje: faceResult.message,
@@ -77,7 +77,7 @@ export const compararRostro = async (req, res, next) => {
 // ====================== POST /api/reconocimiento/verify ======================
 export const verificarEmbeddings = async (req, res, next) => {
   try {
-    const { embedding_a, embedding_b, threshold = 0.55 } = req.body;
+    const { embedding_a, embedding_b, threshold = 0.45 } = req.body;
 
     const result = await faceService.verifyFaces(embedding_a, embedding_b, parseFloat(threshold));
 
