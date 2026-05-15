@@ -89,6 +89,7 @@ export const listarEmpleados = async (req, res, next) => {
       `SELECT
          p.id, p.codigo, p.nombres, p.apellidos,
          p.dni, p.email, p.telefono, p.foto_url,
+         p.sueldo,
          p.activo, p.created_at, p.updated_at
        FROM personas p
        ${where}
@@ -118,7 +119,7 @@ export const obtenerEmpleado = async (req, res, next) => {
     const { id } = req.params;
     const result = await pool.query(
       `SELECT id, codigo, nombres, apellidos, dni, email, telefono, 
-              foto_url, activo, created_at, updated_at
+              foto_url, sueldo, activo, created_at, updated_at
        FROM personas 
        WHERE id = $1 AND tipo = 'empleado'`,
       [id]
@@ -135,7 +136,10 @@ export const obtenerEmpleado = async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════════════════════
 export const crearEmpleado = async (req, res, next) => {
   try {
-    const { nombres, apellidos, dni, email, telefono, codigo, foto_url, descriptor_facial } = req.body;
+    const {
+      nombres, apellidos, dni, email, telefono, codigo,
+      foto_url, descriptor_facial, sueldo
+    } = req.body;
 
     if (!foto_url) {
       throw httpError(400, 'La URL de la foto de Supabase es obligatoria');
@@ -164,9 +168,10 @@ export const crearEmpleado = async (req, res, next) => {
     }
 
     const insertResult = await pool.query(
-      `INSERT INTO personas (tipo, codigo, nombres, apellidos, dni, email, telefono, foto_url, descriptor_facial)
-       VALUES ('empleado', $1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, codigo, nombres, apellidos, dni, email, telefono, foto_url, activo, created_at`,
+      `INSERT INTO personas 
+        (tipo, codigo, nombres, apellidos, dni, email, telefono, foto_url, descriptor_facial, sueldo)
+       VALUES ('empleado', $1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, codigo, nombres, apellidos, dni, email, telefono, foto_url, sueldo, activo, created_at`,
       [
         codigo || null,
         nombres,
@@ -175,7 +180,8 @@ export const crearEmpleado = async (req, res, next) => {
         email || null,
         telefono || null,
         foto_url,
-        descriptor_facial ? JSON.stringify(descriptor_facial) : null
+        descriptor_facial ? JSON.stringify(descriptor_facial) : null,
+        sueldo !== undefined && sueldo !== null ? parseFloat(sueldo) : null
       ]
     );
 
@@ -193,7 +199,10 @@ export const crearEmpleado = async (req, res, next) => {
 export const editarEmpleado = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { nombres, apellidos, dni, email, telefono, codigo, foto_url, descriptor_facial } = req.body;
+    const {
+      nombres, apellidos, dni, email, telefono, codigo,
+      foto_url, descriptor_facial, sueldo
+    } = req.body;
 
     // Verificar que existe
     const existe = await pool.query("SELECT id FROM personas WHERE id = $1 AND tipo = 'empleado'", [id]);
@@ -232,6 +241,7 @@ export const editarEmpleado = async (req, res, next) => {
       telefono,
       codigo,
       foto_url,
+      sueldo: sueldo !== undefined ? (sueldo !== null ? parseFloat(sueldo) : null) : undefined,
       descriptor_facial: descriptor_facial !== undefined ? (descriptor_facial ? JSON.stringify(descriptor_facial) : null) : undefined
     };
 
@@ -255,7 +265,9 @@ export const editarEmpleado = async (req, res, next) => {
     await pool.query(`UPDATE personas SET ${setClauses.join(', ')} WHERE id = $${paramIndex}`, values);
 
     const { rows } = await pool.query(
-      'SELECT id, codigo, nombres, apellidos, dni, email, telefono, foto_url, activo, updated_at FROM personas WHERE id = $1',
+      `SELECT id, codigo, nombres, apellidos, dni, email, telefono, 
+              foto_url, sueldo, activo, updated_at 
+       FROM personas WHERE id = $1`,
       [id]
     );
 

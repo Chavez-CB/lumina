@@ -9,7 +9,9 @@ const httpError = (status, message) => {
   return err;
 };
 
+// =============================================
 // GET /api/asistencias
+// =============================================
 export const listarAsistencias = async (req, res, next) => {
   try {
     const { fecha, persona_id, estado, pagina = 1, limite = 20 } = req.query;
@@ -29,19 +31,19 @@ export const listarAsistencias = async (req, res, next) => {
     const params = [];
     let paramIndex = 1;
 
-    if (fecha) { 
-      query += ` AND a.fecha = $${paramIndex}`; 
-      params.push(fecha); 
+    if (fecha) {
+      query += ` AND a.fecha = $${paramIndex}`;
+      params.push(fecha);
       paramIndex++;
     }
-    if (persona_id) { 
-      query += ` AND a.persona_id = $${paramIndex}`; 
-      params.push(persona_id); 
+    if (persona_id) {
+      query += ` AND a.persona_id = $${paramIndex}`;
+      params.push(persona_id);
       paramIndex++;
     }
-    if (estado) { 
-      query += ` AND a.estado = $${paramIndex}`; 
-      params.push(estado); 
+    if (estado) {
+      query += ` AND a.estado = $${paramIndex}`;
+      params.push(estado);
       paramIndex++;
     }
 
@@ -65,17 +67,19 @@ export const listarAsistencias = async (req, res, next) => {
     res.json({
       ok: true,
       data: rows,
-      meta: { 
-        total, 
-        pagina: parseInt(pagina), 
-        limite: parseInt(limite), 
-        paginas: Math.ceil(total / limite) 
+      meta: {
+        total,
+        pagina: parseInt(pagina),
+        limite: parseInt(limite),
+        paginas: Math.ceil(total / limite)
       }
     });
   } catch (err) { next(err); }
 };
 
+// =============================================
 // POST /api/asistencias/registrar (Manual)
+// =============================================
 export const registrarAsistencia = async (req, res, next) => {
   try {
     const {
@@ -109,23 +113,24 @@ export const registrarAsistencia = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// POST /api/asistencias/registrar-facial
+// =============================================
+// POST /api/asistencias/registrar-facial  ← COMPLETA
+// =============================================
 export const registrarAsistenciaFacial = async (req, res, next) => {
   const startTime = Date.now();
   let logData = {
-    endpoint: '/compare',
+    endpoint: '/asistencias/registrar-facial',
     metodo: 'POST',
     exito: false,
     ip_address: req.ip || req.socket.remoteAddress
   };
 
   try {
-    if (!req.file) throw new Error('No se recibió imagen');
-
+    if (!req.file) throw httpError(400, 'No se recibió imagen');
     const { area_id, threshold = 0.55 } = req.body;
-    if (!area_id) throw new Error('El área es obligatoria');
+    if (!area_id) throw httpError(400, 'El área (area_id) es obligatoria');
 
-    // Obtener personas con descriptor facial
+    // 1. Obtener personas con descriptor facial
     const { rows: personas } = await pool.query(`
       SELECT id, nombres, apellidos, descriptor_facial, codigo
       FROM personas 
@@ -133,7 +138,7 @@ export const registrarAsistenciaFacial = async (req, res, next) => {
     `);
 
     if (personas.length === 0) {
-      throw new Error('No hay personas registradas con reconocimiento facial');
+      throw httpError(400, 'No hay personas registradas con reconocimiento facial');
     }
 
     const candidates = personas.map(p => ({
@@ -141,9 +146,10 @@ export const registrarAsistenciaFacial = async (req, res, next) => {
       embedding: p.descriptor_facial
     }));
 
+    // 2. Reconocimiento facial
     const faceResult = await faceService.compareFace(
-      req.file.buffer, 
-      candidates, 
+      req.file.buffer,
+      candidates,
       parseFloat(threshold)
     );
 
@@ -161,7 +167,8 @@ export const registrarAsistenciaFacial = async (req, res, next) => {
       mensaje: faceResult.message
     };
 
-    await registrarLog({ body: logData }, { status: () => {}, json: () => {} }, () => {});
+    // Registrar log
+    await registrarLog({ body: logData }, { status: () => { }, json: () => { } }, () => { });
 
     if (!faceResult.found) {
       return res.status(200).json({
@@ -172,23 +179,65 @@ export const registrarAsistenciaFacial = async (req, res, next) => {
       });
     }
 
-    // ... (el resto de la lógica de registrar entrada/salida se mantiene similar, solo cambian las queries)
-    // Nota: Esta función es larga. Si quieres la versión completa adaptada del bloque de horarios y registro, avísame y te la termino.
+    const persona_id = parseInt(faceResult.user_id);
+
+    // 3. Verificar si ya tiene asistencia hoy
+    const hoy = new Date().toISOString().split('T')[0];
+    const { rows: asistenciaExistente } = await pool.query(`
+      SELECT id, estado, hora_entrada 
+      FROM asistencias 
+      WHERE persona_id = $1 AND fecha = $2`,
+      [persona_id, hoy]
+    );
+
+    let asistencia;
+
+    if (asistenciaExistente.length > 0) {
+      // Registrar salida
+      const { rows: [asistenciaActualizada] } = await pool.query(`
+        UPDATE asistencias 
+        SET hora_salida = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1 
+        RETURNING *`,
+        [asistenciaExistente[0].id]
+      );
+      asistencia = asistenciaActualizada;
+    } else {
+      // Registrar entrada
+      const { rows: [nuevaAsistencia] } = await pool.query(`
+        INSERT INTO asistencias 
+          (persona_id, horario_id, area_id, fecha, hora_entrada, estado, metodo_registro)
+        VALUES ($1, 
+                (SELECT horario_id FROM asignaciones 
+                 WHERE persona_id = $1 AND activo = TRUE LIMIT 1),
+                $2, $3, CURRENT_TIMESTAMP, 'presente', 'facial')
+        RETURNING *`,
+        [persona_id, area_id, hoy]
+      );
+      asistencia = nuevaAsistencia;
+    }
 
     res.json({
       ok: true,
       found: true,
-      // ... resto de respuesta
+      message: asistenciaExistente.length > 0
+        ? "Salida registrada correctamente"
+        : "Entrada registrada correctamente",
+      data: asistencia,
+      persona: faceResult.name || `${personas.find(p => p.id === persona_id)?.nombres} ${personas.find(p => p.id === persona_id)?.apellidos}`
     });
 
   } catch (err) {
     logData.mensaje = err.message;
-    await registrarLog({ body: logData }, { status: () => {}, json: () => {} }, () => {});
+    await registrarLog({ body: logData }, { status: () => { }, json: () => { } }, () => { });
     next(err);
   }
 };
 
+// =============================================
 // GET /api/asistencias/:id
+// =============================================
 export const obtenerAsistencia = async (req, res, next) => {
   try {
     const { id } = req.params;
