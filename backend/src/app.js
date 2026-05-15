@@ -55,7 +55,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ── Rutas ─────────────────────────────────────────────────────────────────
-app.get('/', (_, res) => res.json({ ok: true, mensaje: 'Lumina API funcionando 🌟' }));
+app.get('/', (_, res) => res.json({ ok: true, mensaje: 'Lumina API funcionando' }));
 
 app.use('/api/admin', adminRoutes);
 app.use('/api/empleados', empleadoRoutes);
@@ -75,7 +75,7 @@ app.use(errorHandler);
 
 // ── Inicio ────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
 
 
