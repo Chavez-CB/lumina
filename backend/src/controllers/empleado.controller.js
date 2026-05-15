@@ -1,10 +1,46 @@
 import pool from '../config/db.js';
 
-// ── Helper: lanza error con status HTTP ────────────────────────────────────
 const httpError = (status, message) => {
   const err = new Error(message);
   err.status = status;
   return err;
+};
+
+// ========== Función auxiliar para verificar si un embedding ya existe ==========
+/**
+ * Verifica si un descriptor facial ya está asociado a otra persona.
+ * @param {Array|Object} descriptorFacial - El embedding a verificar.
+ * @param {number|null} excludeId - ID de persona a excluir (para edición).
+ * @returns {Promise<Object|null>} - Retorna la persona que ya tiene ese embedding o null.
+ */
+const verificarEmbeddingUnico = async (descriptorFacial, excludeId = null) => {
+  if (!descriptorFacial) return null;
+
+  // Normalizar: si es objeto con propiedad 'embedding' (como devuelve face service) extraemos
+  let embeddingToCheck = descriptorFacial;
+  if (descriptorFacial.embedding && Array.isArray(descriptorFacial.embedding)) {
+    embeddingToCheck = descriptorFacial.embedding;
+  }
+  const embeddingArray = Array.isArray(embeddingToCheck) ? embeddingToCheck : null;
+  if (!embeddingArray) return null;
+
+  const embeddingStr = JSON.stringify(embeddingArray);
+
+  let query = `
+    SELECT id, nombres, apellidos, dni
+    FROM personas
+    WHERE descriptor_facial IS NOT NULL
+      AND descriptor_facial::text = $1
+  `;
+  const params = [embeddingStr];
+  if (excludeId) {
+    query += ` AND id != $2`;
+    params.push(excludeId);
+  }
+  query += ` LIMIT 1`;
+
+  const { rows } = await pool.query(query, params);
+  return rows.length ? rows[0] : null;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -43,14 +79,12 @@ export const listarEmpleados = async (req, res, next) => {
 
     const where = `WHERE ${filtros.join(' AND ')}`;
 
-    // Total para paginación
     const totalResult = await pool.query(
       `SELECT COUNT(*) AS total FROM personas p ${where}`,
       params
     );
     const total = parseInt(totalResult.rows[0].total);
 
-    // Datos paginados
     const empleadosResult = await pool.query(
       `SELECT
          p.id, p.codigo, p.nombres, p.apellidos,
@@ -101,12 +135,18 @@ export const obtenerEmpleado = async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════════════════════
 export const crearEmpleado = async (req, res, next) => {
   try {
-    // Ahora extraemos foto_url que vendrá desde el cliente (Supabase)
     const { nombres, apellidos, dni, email, telefono, codigo, foto_url, descriptor_facial } = req.body;
 
-    // Validación básica: Si no hay foto_url de Supabase, lanzamos error
     if (!foto_url) {
       throw httpError(400, 'La URL de la foto de Supabase es obligatoria');
+    }
+
+    // ✅ Validar que el embedding (si se envía) no pertenezca a otra persona
+    if (descriptor_facial) {
+      const existente = await verificarEmbeddingUnico(descriptor_facial);
+      if (existente) {
+        throw httpError(409, `El rostro ya está registrado para la persona ${existente.nombres} ${existente.apellidos} (DNI: ${existente.dni || 'N/A'}). No se puede duplicar.`);
+      }
     }
 
     // Verificar duplicados (DNI, Email, Código)
@@ -114,18 +154,15 @@ export const crearEmpleado = async (req, res, next) => {
       const dniResult = await pool.query('SELECT id FROM personas WHERE dni = $1', [dni]);
       if (dniResult.rows.length > 0) throw httpError(409, `El DNI ${dni} ya está registrado`);
     }
-
     if (email) {
       const emailResult = await pool.query('SELECT id FROM personas WHERE email = $1', [email]);
       if (emailResult.rows.length > 0) throw httpError(409, `El email ${email} ya está registrado`);
     }
-
     if (codigo) {
       const codigoResult = await pool.query('SELECT id FROM personas WHERE codigo = $1', [codigo]);
       if (codigoResult.rows.length > 0) throw httpError(409, `El código ${codigo} ya está registrado`);
     }
 
-    // Insertar incluyendo la URL de Supabase y el descriptor facial
     const insertResult = await pool.query(
       `INSERT INTO personas (tipo, codigo, nombres, apellidos, dni, email, telefono, foto_url, descriptor_facial)
        VALUES ('empleado', $1, $2, $3, $4, $5, $6, $7, $8)
@@ -137,14 +174,14 @@ export const crearEmpleado = async (req, res, next) => {
         dni,
         email || null,
         telefono || null,
-        foto_url, // URL de Supabase Storage
+        foto_url,
         descriptor_facial ? JSON.stringify(descriptor_facial) : null
       ]
     );
 
     res.status(201).json({
       ok: true,
-      message: 'Empleado registrado con éxito (Imagen en Supabase)',
+      message: 'Empleado registrado con éxito',
       data: insertResult.rows[0]
     });
   } catch (err) { next(err); }
@@ -162,7 +199,29 @@ export const editarEmpleado = async (req, res, next) => {
     const existe = await pool.query("SELECT id FROM personas WHERE id = $1 AND tipo = 'empleado'", [id]);
     if (existe.rows.length === 0) throw httpError(404, 'Empleado no encontrado');
 
-    // ... (Validaciones de duplicados se mantienen igual)
+    // ✅ Validar unicidad del embedding (excluyendo el propio ID)
+    if (descriptor_facial !== undefined) {
+      if (descriptor_facial !== null) {
+        const existente = await verificarEmbeddingUnico(descriptor_facial, parseInt(id));
+        if (existente) {
+          throw httpError(409, `El rostro ya está registrado para otra persona (ID ${existente.id}: ${existente.nombres} ${existente.apellidos}). No se puede asignar.`);
+        }
+      }
+    }
+
+    // Validar duplicados de DNI, email, código (excluyendo el propio registro)
+    if (dni) {
+      const dniResult = await pool.query('SELECT id FROM personas WHERE dni = $1 AND id != $2', [dni, id]);
+      if (dniResult.rows.length > 0) throw httpError(409, `El DNI ${dni} ya está registrado por otra persona`);
+    }
+    if (email) {
+      const emailResult = await pool.query('SELECT id FROM personas WHERE email = $1 AND id != $2', [email, id]);
+      if (emailResult.rows.length > 0) throw httpError(409, `El email ${email} ya está registrado por otra persona`);
+    }
+    if (codigo) {
+      const codigoResult = await pool.query('SELECT id FROM personas WHERE codigo = $1 AND id != $2', [codigo, id]);
+      if (codigoResult.rows.length > 0) throw httpError(409, `El código ${codigo} ya está registrado por otra persona`);
+    }
 
     // Construir UPDATE dinámico
     const campos = {
@@ -172,8 +231,8 @@ export const editarEmpleado = async (req, res, next) => {
       email,
       telefono,
       codigo,
-      foto_url, // Si el usuario cambia la foto en Supabase, enviará la nueva URL
-      descriptor_facial: descriptor_facial ? JSON.stringify(descriptor_facial) : undefined
+      foto_url,
+      descriptor_facial: descriptor_facial !== undefined ? (descriptor_facial ? JSON.stringify(descriptor_facial) : null) : undefined
     };
 
     const setClauses = [];
@@ -188,7 +247,9 @@ export const editarEmpleado = async (req, res, next) => {
       }
     }
 
-    if (setClauses.length === 0) return res.status(422).json({ ok: false, message: 'Nada que actualizar' });
+    if (setClauses.length === 0) {
+      return res.status(422).json({ ok: false, message: 'Nada que actualizar' });
+    }
 
     values.push(id);
     await pool.query(`UPDATE personas SET ${setClauses.join(', ')} WHERE id = $${paramIndex}`, values);
@@ -210,7 +271,7 @@ export const darDeBaja = async (req, res, next) => {
     const { id } = req.params;
 
     const { rows } = await pool.query(
-      "SELECT id, activo FROM personas WHERE id = $1 AND tipo = 'empleado'", 
+      "SELECT id, activo FROM personas WHERE id = $1 AND tipo = 'empleado'",
       [id]
     );
 
@@ -231,7 +292,7 @@ export const reactivarEmpleado = async (req, res, next) => {
     const { id } = req.params;
 
     const { rows } = await pool.query(
-      "SELECT id, activo FROM personas WHERE id = $1 AND tipo = 'empleado'", 
+      "SELECT id, activo FROM personas WHERE id = $1 AND tipo = 'empleado'",
       [id]
     );
 
